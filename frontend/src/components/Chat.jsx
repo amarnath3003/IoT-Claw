@@ -282,7 +282,7 @@ export default function Chat({ messages, setMessages }) {
       <div style={{
         display: 'grid',
         gridTemplateRows: '1fr auto',
-        height: 'calc(100vh - 148px)',
+        height: 'calc(100vh - 136px)',
         gap: 0,
         minHeight: 0,
       }}>

@@ -62,8 +62,8 @@ function buildNodeLabel(data) {
     <div style={{
       padding: '8px 12px',
       borderRadius: 10,
-      background: isTrigger ? 'rgba(255,107,0,0.10)' : 'rgba(34,197,94,0.08)',
-      border: `1px solid ${isTrigger ? 'rgba(255,107,0,0.3)' : 'rgba(34,197,94,0.25)'}`,
+      background: isTrigger ? 'rgba(26,77,255,0.10)' : 'rgba(34,197,94,0.08)',
+      border: `1px solid ${isTrigger ? 'rgba(26,77,255,0.30)' : 'rgba(34,197,94,0.25)'}`,
       minWidth: 160,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>

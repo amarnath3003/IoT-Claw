@@ -27,14 +27,14 @@ export default function App() {
   const deviceCount = Object.keys(deviceStates).length
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-dark)' }}>
+    <div style={{ height: '100vh', background: 'var(--bg-dark)', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── HEADER ── */}
       <header style={{
         background: 'var(--bg-card)',
         boxShadow: '0 4px 24px #0d0f11, 0 1px 0 rgba(255,255,255,0.04)',
-        padding: '0 24px',
-        height: 60,
+        padding: '0 32px',
+        height: 80,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -43,11 +43,11 @@ export default function App() {
         zIndex: 100,
       }}>
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
+            width: 56,
+            height: 56,
+            borderRadius: 14,
             background: '#000',
             boxShadow: 'var(--sh-flat)',
             overflow: 'hidden',
@@ -61,10 +61,10 @@ export default function App() {
           </div>
 
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent)', textShadow: 'var(--glow-sm)', letterSpacing: 1 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)', textShadow: 'var(--glow-sm)', letterSpacing: 1.5 }}>
               iotClaw
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', lineHeight: 1 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', lineHeight: 1.2, marginTop: 2 }}>
               AI-Powered Automation
             </div>
           </div>
@@ -86,35 +86,49 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── NAV ── */}
-      <nav style={{
-        background: 'var(--bg-card)',
-        display: 'flex',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
-        padding: '0 16px',
-        boxShadow: '0 2px 12px #0d0f11',
-      }}>
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            id={`tab-${tab.id.toLowerCase()}`}
-            onClick={() => setActiveTab(tab.id)}
-            className={`neu-tab${activeTab === tab.id ? ' active' : ''}`}
-          >
-            <span style={{ fontSize: 13 }}>{tab.icon}</span>
-            {tab.id}
-          </button>
-        ))}
-      </nav>
+      {/* ── BODY ── */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        
+        {/* ── SIDEBAR NAV ── */}
+        <nav style={{
+          width: 240,
+          background: 'var(--bg-card)',
+          borderRight: '1px solid rgba(255,255,255,0.04)',
+          boxShadow: '2px 0 12px #0d0f11',
+          padding: '24px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          flexShrink: 0,
+          zIndex: 10,
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, paddingLeft: 12 }}>
+            Main Menu
+          </div>
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              id={`tab-${tab.id.toLowerCase()}`}
+              onClick={() => setActiveTab(tab.id)}
+              className={`neu-tab${activeTab === tab.id ? ' active' : ''}`}
+            >
+              <span style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{tab.icon}</span>
+              {tab.id}
+            </button>
+          ))}
+        </nav>
 
-      {/* ── MAIN ── */}
-      <main style={{ padding: '28px 24px', maxWidth: 1400, margin: '0 auto' }}>
-        {activeTab === 'Dashboard'  && <Dashboard deviceStates={deviceStates} />}
-        {activeTab === 'Devices'    && <Devices deviceStates={deviceStates} />}
-        {activeTab === 'Chat'       && <Chat messages={chatMessages} setMessages={setChatMessages} />}
-        {activeTab === 'Workflows'  && <WorkflowEditor deviceStates={deviceStates} />}
-        {activeTab === 'Templates'  && <TemplateLibrary />}
-      </main>
+        {/* ── MAIN ── */}
+        <main style={{ flex: 1, overflowY: 'auto', padding: '28px 24px' }}>
+          <div style={{ maxWidth: 1400, margin: '0 auto', height: '100%' }}>
+            {activeTab === 'Dashboard'  && <Dashboard deviceStates={deviceStates} />}
+            {activeTab === 'Devices'    && <Devices deviceStates={deviceStates} />}
+            {activeTab === 'Chat'       && <Chat messages={chatMessages} setMessages={setChatMessages} />}
+            {activeTab === 'Workflows'  && <WorkflowEditor deviceStates={deviceStates} />}
+            {activeTab === 'Templates'  && <TemplateLibrary />}
+          </div>
+        </main>
+      </div>
     </div>
   )
 }

@@ -7,7 +7,6 @@ const TEMPLATES = [
     name: 'Smart Thermostat',
     description: 'Turn on AC/fan when temperature exceeds a threshold.',
     icon: '◈',
-    iconColor: '#f87171',
     tag: 'Climate',
     defaults: { trigger_operator: '>', trigger_value: 30, action_command: 'ON' },
   },
@@ -16,7 +15,6 @@ const TEMPLATES = [
     name: 'Auto Lights Off',
     description: 'Turn off lights when no motion is detected.',
     icon: '◑',
-    iconColor: '#fbbf24',
     tag: 'Lighting',
     defaults: { trigger_operator: '==', trigger_value: 0, action_command: 'OFF' },
   },
@@ -25,7 +23,6 @@ const TEMPLATES = [
     name: 'Plant Watering',
     description: 'Turn on water pump when soil moisture drops low.',
     icon: '⊡',
-    iconColor: '#22c55e',
     tag: 'Garden',
     defaults: { trigger_operator: '<', trigger_value: 30, action_command: 'ON' },
   },
@@ -34,7 +31,6 @@ const TEMPLATES = [
     name: 'Security Lights',
     description: 'Turn on lights when motion is detected at night.',
     icon: '⊙',
-    iconColor: 'var(--accent)',
     tag: 'Security',
     defaults: { trigger_operator: '==', trigger_value: 1, action_command: 'ON' },
   },
@@ -43,7 +39,6 @@ const TEMPLATES = [
     name: 'Overheat Protection',
     description: 'Turn off a device if temperature gets dangerously high.',
     icon: '⏻',
-    iconColor: '#f87171',
     tag: 'Safety',
     defaults: { trigger_operator: '>', trigger_value: 60, action_command: 'OFF' },
   },
@@ -52,19 +47,20 @@ const TEMPLATES = [
     name: 'Humidity Control',
     description: 'Turn on dehumidifier when humidity exceeds threshold.',
     icon: '⬡',
-    iconColor: '#38bdf8',
     tag: 'Climate',
     defaults: { trigger_operator: '>=', trigger_value: 80, action_command: 'ON' },
   },
 ]
 
 const CATEGORY_COLORS = {
-  Climate:  '#38bdf8',
-  Lighting: '#fbbf24',
-  Garden:   '#22c55e',
-  Security: 'var(--accent)',
-  Safety:   '#f87171',
+  Climate:  '#38bdf8',  // sky blue
+  Lighting: '#fbbf24',  // amber
+  Garden:   '#22c55e',  // green
+  Security: '#a78bfa',  // purple — distinct from site accent blue
+  Safety:   '#f87171',  // red
 }
+
+
 
 /* ──────────────────────────────────────────────
    Modal
