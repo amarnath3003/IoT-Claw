@@ -18,7 +18,7 @@ class SecurityCameraSimulator:
         self.ws_broadcast_fn = ws_broadcast_fn
         self.device_name = CAMERA_DEVICE_NAME
         self.camera_index = int(os.getenv("SECURITY_CAMERA_INDEX", "0"))
-        self.poll_interval = float(os.getenv("SECURITY_CAMERA_POLL_INTERVAL", "0.25"))
+        self.poll_interval = float(os.getenv("SECURITY_CAMERA_POLL_INTERVAL", "0.1"))
         self.alert_cooldown = int(os.getenv("SECURITY_CAMERA_ALERT_COOLDOWN", "60"))
         self.capture_dir = Path(os.getenv("SECURITY_CAMERA_CAPTURE_DIR", "captures"))
         self.telegram_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -143,7 +143,9 @@ class SecurityCameraSimulator:
                 self._clear_preview()
 
     def _update_preview(self, cv2, frame):
-        ok, jpeg = cv2.imencode(".jpg", frame)
+        # Lower resolution for smoother, lighter streaming
+        small_frame = cv2.resize(frame, (640, 480))
+        ok, jpeg = cv2.imencode(".jpg", small_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
         if not ok:
             return
         with self._frame_lock:

@@ -42,7 +42,7 @@ export default function DeviceCard({ name, data }) {
     if (!showCameraPreview) { setPreviewError(false); return }
     setPreviewError(false)
     setPreviewTick(Date.now())
-    const t = setInterval(() => setPreviewTick(Date.now()), 700)
+    const t = setInterval(() => setPreviewTick(Date.now()), 100)
     return () => clearInterval(t)
   }, [showCameraPreview])
 
@@ -107,16 +107,19 @@ export default function DeviceCard({ name, data }) {
       {/* ── Camera preview ── */}
       {data.type === 'security_camera' && (
         <div className="neu-trough" style={{ padding: 10 }}>
-          {showCameraPreview && !previewError && (
-            <img
-              src={previewUrl}
-              alt={`${deviceLabel} live preview`}
-              style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 6, display: 'block' }}
-              onError={() => setPreviewError(true)}
-            />
-          )}
-          {showCameraPreview && previewError && (
-            <p className="neu-alert-warn" style={{ margin: 0, fontSize: 11 }}>Preview warming up — keep camera ON.</p>
+          {showCameraPreview && (
+            <>
+              <img
+                src={previewUrl}
+                alt={`${deviceLabel} live preview`}
+                style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 6, display: previewError ? 'none' : 'block' }}
+                onError={() => setPreviewError(true)}
+                onLoad={() => setPreviewError(false)}
+              />
+              {previewError && (
+                <p className="neu-alert-warn" style={{ margin: 0, fontSize: 11 }}>Preview warming up — keep camera ON.</p>
+              )}
+            </>
           )}
           {lastDetectionTime ? (
             <p style={{ margin: showCameraPreview ? '8px 0 0' : 0, fontSize: 11, color: 'var(--text-dim)' }}>
