@@ -65,14 +65,18 @@ function TemplateModal({ template, devices, onClose, onActivated }) {
         name: template.name,
         enabled: true,
         trigger: {
+          type: 'sensor',
           device: triggerDevice,
           operator: template.defaults.trigger_operator,
           value: parseFloat(triggerValue),
         },
-        action: {
-          device: actionDevice,
-          command: template.defaults.action_command,
-        },
+        actions: [
+          {
+            type: 'device',
+            device: actionDevice,
+            command: template.defaults.action_command,
+          },
+        ],
       })
       onActivated(res.data)
       onClose()
@@ -90,7 +94,7 @@ function TemplateModal({ template, devices, onClose, onActivated }) {
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-5">
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 w-full max-w-md space-y-5">
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -187,7 +191,7 @@ export default function TemplateLibrary() {
         {TEMPLATES.map(template => (
           <div
             key={template.id}
-            className="bg-gray-800 border border-gray-700 rounded-2xl p-5 flex flex-col gap-3 hover:border-gray-600 transition-colors"
+            className="bg-gray-800 border border-gray-700 rounded-lg p-5 flex flex-col gap-3 hover:border-gray-600 transition-colors"
           >
             <div className="flex items-center gap-2">
               <span style={{ fontSize: 20 }}>{template.icon}</span>

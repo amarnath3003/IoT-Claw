@@ -5,23 +5,32 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// ── Chat ──
 export const sendChat = (message, history) =>
   api.post('/chat', { message, history })
 
-// ── Devices ──
 export const getState = () =>
   api.get('/state')
 
 export const registerDevice = (device) =>
   api.post('/devices', device)
 
-// ── Workflows ──
+export const deleteDevice = (name) =>
+  api.delete(`/devices/${encodeURIComponent(name)}`)
+
+export const getLogs = (limit = 100) =>
+  api.get('/logs', { params: { limit } })
+
 export const getWorkflows = () =>
   api.get('/workflows')
 
 export const createWorkflow = (workflow) =>
   api.post('/workflows', workflow)
+
+export const toggleWorkflow = (id) =>
+  api.patch(`/workflows/${id}/toggle`)
+
+export const runWorkflow = (id) =>
+  api.post(`/workflows/${id}/run`)
 
 export const deleteWorkflow = (id) =>
   api.delete(`/workflows/${id}`)

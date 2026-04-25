@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
@@ -73,8 +73,9 @@ async def chat(body: dict):
     """Accept a chat message and return AI reply."""
     user_message = body.get("message", "")
     history = body.get("history", [])
-    reply = await run_chat(user_message, history, mqtt, storage)
-    return {"reply": reply}
+    result = await run_chat(user_message, history, mqtt, storage, engine=engine)
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return result
 
 
 @app.get("/state")
@@ -88,7 +89,31 @@ async def register_device(body: dict):
     """Register a new MQTT device."""
     storage.register_device(body)
     mqtt.subscribe(body["topic_base"] + "/state")
+    storage.add_log(
+        "success",
+        "api",
+        f"Registered device: {body['name']}",
+        {"device": body["name"], "topic_base": body["topic_base"], "type": body.get("type", "generic")},
+    )
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return {"status": "registered", "device": body}
+
+
+@app.delete("/devices/{name}")
+async def delete_device(name: str):
+    """Delete a registered MQTT device."""
+    ok = storage.delete_device(name)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    storage.add_log("warning", "api", f"Deleted device: {name}", {"device": name})
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return {"status": "deleted", "device": name}
+
+
+@app.get("/logs")
+async def get_logs(limit: int = Query(100, ge=1, le=500)):
+    """Return recent activity logs."""
+    return storage.get_logs(limit=limit)
 
 
 @app.get("/workflows")
@@ -101,13 +126,53 @@ async def list_workflows():
 async def create_workflow(body: dict):
     """Create a new automation workflow."""
     workflow = storage.save_workflow(body)
+    engine._rebuild_chat_triggers()
+    storage.add_log(
+        "success",
+        "api",
+        f"Created workflow: {workflow.get('name', workflow['id'])}",
+        {"workflow_id": workflow["id"], "trigger_type": workflow.get("trigger", {}).get("type", "sensor")},
+    )
     return workflow
+
+
+@app.patch("/workflows/{workflow_id}/toggle")
+async def toggle_workflow(workflow_id: str):
+    """Enable or disable a workflow by ID."""
+    workflow = storage.toggle_workflow(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
+    state = "enabled" if workflow.get("enabled", True) else "disabled"
+    engine._rebuild_chat_triggers()
+    storage.add_log("info", "api", f"{state.title()} workflow: {workflow.get('name')}", {"workflow_id": workflow_id})
+    return workflow
+
+
+@app.post("/workflows/{workflow_id}/run")
+async def run_workflow(workflow_id: str):
+    """Run a saved workflow's actions manually."""
+    workflow = next((w for w in storage.get_workflows() if w.get("id") == workflow_id), None)
+    if not workflow:
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
+    result = engine._execute_workflow_actions(workflow)
+    storage.increment_workflow_run(workflow_id)
+    storage.add_log("success", "api", f"Manually ran workflow: {workflow.get('name')}", {"workflow_id": workflow_id})
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return {"status": "ran", "workflow_id": workflow_id, "result": result}
 
 
 @app.delete("/workflows/{workflow_id}")
 async def delete_workflow(workflow_id: str):
     """Delete a workflow by ID."""
+    workflow = next((w for w in storage.get_workflows() if w.get("id") == workflow_id), None)
     storage.delete_workflow(workflow_id)
+    engine._rebuild_chat_triggers()
+    storage.add_log(
+        "warning",
+        "api",
+        f"Deleted workflow: {workflow.get('name') if workflow else workflow_id}",
+        {"workflow_id": workflow_id},
+    )
     return {"status": "deleted"}
 
 

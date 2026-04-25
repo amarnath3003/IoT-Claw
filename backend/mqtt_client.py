@@ -28,11 +28,19 @@ class MQTTClient:
 
     def subscribe(self, topic: str):
         self.client.subscribe(topic)
+        self.storage.add_log("info", "mqtt", f"Subscribed to {topic}", {"topic": topic})
         print(f"[MQTT] Subscribed to {topic}")
 
     def publish(self, topic: str, payload: str) -> bool:
         result = self.client.publish(topic, payload)
-        return result.rc == mqtt_lib.MQTT_ERR_SUCCESS
+        ok = result.rc == mqtt_lib.MQTT_ERR_SUCCESS
+        self.storage.add_log(
+            "success" if ok else "error",
+            "mqtt",
+            f"Published {payload} to {topic}" if ok else f"Failed to publish {payload} to {topic}",
+            {"topic": topic, "payload": payload},
+        )
+        return ok
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
@@ -61,7 +69,13 @@ class MQTTClient:
                 value = payload  # Keep as string (e.g., "ON", "OFF")
 
         # Update storage
-        self.storage.update_device_state_from_topic(topic, value)
+        device_name = self.storage.update_device_state_from_topic(topic, value)
+        self.storage.add_log(
+            "info",
+            "mqtt",
+            f"Received {topic} = {value}",
+            {"topic": topic, "value": value, "device": device_name},
+        )
 
         # Broadcast to WebSocket clients (must be scheduled on asyncio loop)
         if self._loop and self._loop.is_running():

@@ -35,7 +35,7 @@ export default function DeviceCard({ name, data }) {
     : null
 
   return (
-    <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 flex flex-col gap-3 hover:border-gray-600 transition-colors">
+    <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 flex flex-col gap-3 hover:border-gray-600 transition-colors">
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
