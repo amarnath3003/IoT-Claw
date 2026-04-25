@@ -1,122 +1,69 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import Chat from './components/Chat'
+import Dashboard from './components/Dashboard'
+import WorkflowEditor from './components/WorkflowEditor'
+import TemplateLibrary from './components/TemplateLibrary'
+import useWebSocket from './hooks/useWebSocket'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+const TABS = [
+  { id: 'Dashboard', icon: '📡' },
+  { id: 'Chat', icon: '💬' },
+  { id: 'Workflows', icon: '⚙️' },
+  { id: 'Templates', icon: '📋' },
+]
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('Dashboard')
+  const { deviceStates, isConnected } = useWebSocket('ws://localhost:8000/ws')
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="app-shell min-h-screen bg-gray-950 text-white">
+      {/* Header */}
+      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-xl">🦞</span>
+          <h1 className="text-lg font-semibold text-cyan-400 tracking-tight">iotClaw</h1>
+          <span className="text-xs text-gray-600 hidden sm:block">AI-powered IoT automation</span>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full transition-colors ${isConnected ? 'bg-green-400' : 'bg-red-500'}`} />
+          <span className="text-xs text-gray-400">
+            {isConnected ? 'Live' : 'Disconnected'}
+          </span>
+          {isConnected && Object.keys(deviceStates).length > 0 && (
+            <span className="text-xs text-gray-600 ml-1 hidden sm:block">
+              · {Object.keys(deviceStates).length} device{Object.keys(deviceStates).length !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
+      {/* Tab Nav */}
+      <nav className="flex border-b border-gray-800 px-4 bg-gray-900">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium transition-colors border-b-2
+              ${activeTab === tab.id
+                ? 'text-cyan-400 border-cyan-400'
+                : 'text-gray-400 border-transparent hover:text-white'
+              }`}
+          >
+            <span style={{ fontSize: 14 }}>{tab.icon}</span>
+            {tab.id}
+          </button>
+        ))}
+      </nav>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      {/* Content */}
+      <main className="p-6">
+        {activeTab === 'Dashboard' && <Dashboard deviceStates={deviceStates} />}
+        {activeTab === 'Chat' && <Chat />}
+        {activeTab === 'Workflows' && <WorkflowEditor />}
+        {activeTab === 'Templates' && <TemplateLibrary />}
+      </main>
+    </div>
   )
 }
-
-export default App
