@@ -17,6 +17,9 @@ export const registerDevice = (device) =>
 export const deleteDevice = (name) =>
   api.delete(`/devices/${encodeURIComponent(name)}`)
 
+export const commandDevice = (name, command) =>
+  api.post(`/devices/${encodeURIComponent(name)}/command`, { command })
+
 export const getLogs = (limit = 100) =>
   api.get('/logs', { params: { limit } })
 

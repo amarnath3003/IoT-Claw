@@ -21,6 +21,7 @@ const BLOCKS = [
   { type: 'trigger.schedule', label: 'Schedule Trigger' },
   { type: 'action.device', label: 'Device Action' },
   { type: 'action.brightness', label: 'Brightness Action' },
+  { type: 'action.camera_monitor', label: 'Camera CV Monitor' },
   { type: 'action.log', label: 'Log Action' },
 ]
 
@@ -30,6 +31,7 @@ const DEFAULT_CONFIG = {
   'trigger.schedule': { time: '07:30' },
   'action.device': { device: '', command: 'ON' },
   'action.brightness': { device: '', level: 50 },
+  'action.camera_monitor': { device: 'laptop_security_camera', command: 'ON' },
   'action.log': { message: 'Workflow fired' },
 }
 
@@ -67,6 +69,7 @@ function buildNodeLabel(data) {
   if (data.blockType === 'trigger.schedule') detail = config.time || 'HH:MM'
   if (data.blockType === 'action.device') detail = `${config.device || 'device'} -> ${config.command}`
   if (data.blockType === 'action.brightness') detail = `${config.device || 'device'} -> ${config.level}%`
+  if (data.blockType === 'action.camera_monitor') detail = `${config.device || 'camera'} -> CV ${config.command}`
   if (data.blockType === 'action.log') detail = config.message || 'log message'
 
   return (
@@ -197,6 +200,7 @@ function WorkflowCanvas({ deviceStates }) {
     const config = data.config
     if (data.blockType === 'action.device') return { type: 'device', device: config.device, command: config.command }
     if (data.blockType === 'action.brightness') return { type: 'brightness', device: config.device, level: Number(config.level) }
+    if (data.blockType === 'action.camera_monitor') return { type: 'camera_monitor', device: config.device, command: config.command }
     return { type: 'log', message: config.message }
   }
 
@@ -226,8 +230,8 @@ function WorkflowCanvas({ deviceStates }) {
 
     const actions = connectedActions.map(actionPayload)
     for (const action of actions) {
-      if ((action.type === 'device' || action.type === 'brightness') && !action.device) {
-        throw new Error('Device and brightness actions need a target device.')
+      if ((action.type === 'device' || action.type === 'brightness' || action.type === 'camera_monitor') && !action.device) {
+        throw new Error('Device, brightness, and camera actions need a target device.')
       }
     }
 
@@ -422,6 +426,22 @@ function BlockInspector({ node, deviceNames, fieldClass, labelClass, onChange })
             <label className={labelClass}>Brightness</label>
             <input type="number" min="0" max="100" className={fieldClass} value={config.level} onChange={e => onChange('level', e.target.value)} />
           </div>
+        </>
+      )}
+
+      {data.blockType === 'action.camera_monitor' && (
+        <>
+          <DeviceSelect value={config.device} deviceNames={deviceNames} fieldClass={fieldClass} labelClass={labelClass} onChange={value => onChange('device', value)} />
+          <div>
+            <label className={labelClass}>CV monitor command</label>
+            <select className={fieldClass} value={config.command} onChange={e => onChange('command', e.target.value)}>
+              <option value="ON">Start detecting faces/bodies</option>
+              <option value="OFF">Stop camera monitor</option>
+            </select>
+          </div>
+          <p className="text-[11px] text-gray-500">
+            Sends a Telegram photo alert when a face or body is detected.
+          </p>
         </>
       )}
 

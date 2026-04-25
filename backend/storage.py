@@ -75,10 +75,10 @@ class Storage:
     def register_device(self, device: dict):
         name = device["name"]
         with self._lock:
-            self._data["devices"][name] = {
+            record = {
                 "topic_base": device["topic_base"],
                 "type": device.get("type", "generic"),
-                "status": "unknown",
+                "status": device.get("status", "unknown"),
                 "unit": device.get("unit", ""),
                 "location": device.get("location", ""),
                 "description": device.get("description", ""),
@@ -86,7 +86,44 @@ class Storage:
                 "last_updated": None,
                 "created_at": datetime.utcnow().isoformat()
             }
+            for key, value in device.items():
+                if key not in {"name", "topic_base", "type", "status", "unit", "location", "description"}:
+                    record[key] = value
+            self._data["devices"][name] = record
             self._save()
+
+    def ensure_device(self, device: dict) -> dict:
+        """Register a built-in device if missing, otherwise refresh metadata without losing state."""
+        name = device["name"]
+        with self._lock:
+            existing = self._data["devices"].get(name)
+            if not existing:
+                record = {
+                    "topic_base": device["topic_base"],
+                    "type": device.get("type", "generic"),
+                    "status": device.get("status", "unknown"),
+                    "unit": device.get("unit", ""),
+                    "location": device.get("location", ""),
+                    "description": device.get("description", ""),
+                    "brightness": None,
+                    "last_updated": None,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+                for key, value in device.items():
+                    if key not in {"name", "topic_base", "type", "status", "unit", "location", "description"}:
+                        record[key] = value
+                self._data["devices"][name] = record
+                self._save()
+                return dict(record)
+
+            for key in ("topic_base", "type", "unit", "location", "description", "simulated", "capabilities"):
+                if key in device:
+                    existing[key] = device[key]
+            existing.setdefault("status", device.get("status", "unknown"))
+            existing.setdefault("created_at", datetime.utcnow().isoformat())
+            existing.setdefault("last_updated", None)
+            self._save()
+            return dict(existing)
 
     def delete_device(self, name: str) -> bool:
         with self._lock:

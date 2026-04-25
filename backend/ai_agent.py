@@ -6,13 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _api_key = os.getenv("OPENAI_API_KEY")
-if not _api_key or _api_key.startswith("sk-proj-REPLACE"):
-    raise RuntimeError(
-        "[ai_agent] OPENAI_API_KEY is missing or is still the placeholder. "
-        "Edit backend/.env and set your real OpenAI API key."
-    )
-
-client = AsyncOpenAI(api_key=_api_key)
+_api_key_missing = not _api_key or _api_key.startswith("sk-proj-REPLACE")
+client = None if _api_key_missing else AsyncOpenAI(api_key=_api_key)
 
 SYSTEM_PROMPT = """You are iotClaw, an intelligent IoT automation assistant.
 You control physical smart home devices through MQTT and manage automations.
@@ -25,6 +20,7 @@ RULES:
   * chat: a secret code the user types in chat (e.g. "activate night mode")
   * schedule: a daily time (e.g. "every day at 07:30")
 - Workflows can have multiple chained actions.
+- The laptop webcam is auto-registered as laptop_security_camera. For security camera monitoring, create a schedule/chat/sensor workflow with a camera_monitor action set to ON.
 - When the user asks to run an existing workflow now, use execute_workflow.
 - Always confirm what you did after tool execution. Be concise and friendly.
 - If the user mentions a device by a casual name (e.g. "the light"), infer the closest registered device name.
@@ -93,7 +89,7 @@ TOOLS = [
                 "properties": {
                     "name": {"type": "string", "description": "Unique snake_case device name"},
                     "topic_base": {"type": "string", "description": "MQTT topic base e.g. home/room/device"},
-                    "type": {"type": "string", "enum": ["switch", "sensor", "dimmable_switch", "generic"]},
+                    "type": {"type": "string", "enum": ["switch", "sensor", "dimmable_switch", "security_camera", "generic"]},
                     "unit": {"type": "string", "description": "Unit for sensor (e.g. °C, %, lux)"},
                     "location": {"type": "string", "description": "Room or location name"},
                     "description": {"type": "string", "description": "Short description of the device"}
@@ -124,7 +120,7 @@ TOOLS = [
 1. sensor: fires when a device value meets a condition (e.g. temp > 30)
 2. chat: fires when the user types a secret code/phrase in the chat
 3. schedule: fires every day at a specific time (HH:MM format)
-Actions can be: device control, brightness setting, or log message.
+Actions can be: device control, brightness setting, camera monitoring, or log message.
 Multiple actions can be chained in one workflow.""",
             "parameters": {
                 "type": "object",
@@ -152,7 +148,7 @@ Multiple actions can be chained in one workflow.""",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "type": {"type": "string", "enum": ["device", "brightness", "log"]},
+                                "type": {"type": "string", "enum": ["device", "brightness", "camera_monitor", "log"]},
                                 "device": {"type": "string", "description": "Device to control"},
                                 "command": {"type": "string", "enum": ["ON", "OFF"], "description": "For device type"},
                                 "level": {"type": "integer", "description": "For brightness type (0-100)"},
@@ -248,6 +244,11 @@ def build_tool_dispatch(mqtt, storage, engine=None):
                 device_name = close[0]
             else:
                 return {"error": f"Device '{device_name}' not found.", "known_devices": list(devices.keys())}
+        if engine:
+            result = engine.execute_device_action(device_name, action, source="ai")
+            if result.get("error"):
+                return result
+            return {"status": "success", "device": device_name, "action": action, "result": result}
         topic = devices[device_name]["topic_base"] + "/set"
         success = mqtt.publish(topic, action)
         if success:
@@ -373,11 +374,22 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
     dispatch = build_tool_dispatch(mqtt, storage, engine)
 
     # Check chat-triggers before calling OpenAI
+    fired = []
     if engine:
         fired = engine.check_chat_trigger(user_message)
         if fired:
             names = ", ".join(f["workflow"] for f in fired)
             storage.add_log("success", "engine", f"Chat trigger fired: {names}", {"message": user_message})
+
+    if client is None:
+        storage.add_log("warning", "ai", "AI chat is disabled because OPENAI_API_KEY is not configured")
+        if fired:
+            names = ", ".join(f["workflow"] for f in fired)
+            return {"reply": f"Triggered workflow: {names}. AI chat is disabled until OPENAI_API_KEY is configured.", "tool_calls": []}
+        return {
+            "reply": "AI chat is disabled. Set OPENAI_API_KEY in backend/.env to enable natural-language control.",
+            "tool_calls": [],
+        }
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.extend(history)

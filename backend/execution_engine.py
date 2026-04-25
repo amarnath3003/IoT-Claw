@@ -1,16 +1,16 @@
 import asyncio
-from datetime import datetime, timedelta
-import re
+from datetime import datetime
+
 
 class ExecutionEngine:
-    def __init__(self, storage, mqtt, check_interval: float = 5.0):
+    def __init__(self, storage, mqtt, check_interval: float = 5.0, camera_service=None):
         self.storage = storage
         self.mqtt = mqtt
         self.check_interval = check_interval
-        self._last_triggered: dict = {}  # workflow_id -> datetime
+        self.camera_service = camera_service
+        self._last_triggered: dict = {}
         self.cooldown_seconds = 60
-        # Chat-trigger queue: set of (workflow_id, secret_code) pairs
-        self._chat_triggers: dict = {}   # secret_code -> workflow_id
+        self._chat_triggers: dict = {}
 
     async def run(self):
         print("[Engine] Execution engine started.")
@@ -25,31 +25,31 @@ class ExecutionEngine:
     def _rebuild_chat_triggers(self):
         """Index all chat-triggered workflows by their secret code."""
         self._chat_triggers = {}
-        for w in self.storage.get_workflows():
-            trigger = w.get("trigger", {})
+        for workflow in self.storage.get_workflows():
+            trigger = workflow.get("trigger", {})
             if trigger.get("type") == "chat" and trigger.get("code"):
-                self._chat_triggers[trigger["code"].strip().lower()] = w["id"]
+                self._chat_triggers[trigger["code"].strip().lower()] = workflow["id"]
 
     def check_chat_trigger(self, message: str) -> list[dict]:
         """Call this from ai_agent when a user message comes in. Returns fired workflows."""
         self._rebuild_chat_triggers()
         fired = []
         msg_lower = message.strip().lower()
-        for code, wid in self._chat_triggers.items():
+        for code, workflow_id in self._chat_triggers.items():
             if code in msg_lower:
-                workflows = self.storage.get_workflows()
-                for w in workflows:
-                    if w.get("id") == wid and w.get("enabled", True):
-                        result = self._execute_workflow_actions(w)
+                for workflow in self.storage.get_workflows():
+                    if workflow.get("id") == workflow_id and workflow.get("enabled", True):
+                        result = self._execute_workflow_actions(workflow)
                         if result:
-                            self.storage.increment_workflow_run(wid)
-                            fired.append({"workflow": w["name"], "result": result})
+                            self.storage.increment_workflow_run(workflow_id)
+                            fired.append({"workflow": workflow["name"], "result": result})
         return fired
 
     async def _evaluate_all(self):
         workflows = self.storage.get_workflows()
         devices = self.storage.get_all_devices()
-        now = datetime.utcnow()
+        # Schedules are user-facing, so evaluate them in the machine's local time.
+        now = datetime.now()
 
         for workflow in workflows:
             if not workflow.get("enabled", True):
@@ -63,17 +63,15 @@ class ExecutionEngine:
                 elif trigger_type == "schedule":
                     self._evaluate_schedule_trigger(workflow, trigger, now)
                 elif trigger_type == "chat":
-                    pass  # handled by check_chat_trigger()
+                    pass
                 elif trigger_type == "always":
                     self._execute_workflow_actions(workflow)
-
             except Exception as e:
                 print(f"[Engine] Error evaluating workflow '{workflow.get('name')}': {e}")
 
     def _evaluate_sensor_trigger(self, workflow, trigger, devices, now):
         device_name = trigger.get("device")
         operator = trigger.get("operator", ">")
-        threshold = float(trigger.get("value", 0))
 
         if not device_name or device_name not in devices:
             return
@@ -84,52 +82,57 @@ class ExecutionEngine:
 
         try:
             current = float(raw)
+            threshold = float(trigger.get("value", 0))
         except (ValueError, TypeError):
-            # String equality check (e.g. status == "ON")
             current = str(raw).strip().upper()
             threshold_str = str(trigger.get("value", "")).strip().upper()
-            condition = (operator == "==" and current == threshold_str) or \
-                        (operator == "!=" and current != threshold_str)
+            condition = (operator == "==" and current == threshold_str) or (
+                operator == "!=" and current != threshold_str
+            )
             if condition:
                 self._fire_if_ready(workflow, now)
             return
 
-        ops = {">": current > threshold, "<": current < threshold,
-               ">=": current >= threshold, "<=": current <= threshold,
-               "==": current == threshold, "!=": current != threshold}
+        ops = {
+            ">": current > threshold,
+            "<": current < threshold,
+            ">=": current >= threshold,
+            "<=": current <= threshold,
+            "==": current == threshold,
+            "!=": current != threshold,
+        }
         if ops.get(operator, False):
             self._fire_if_ready(workflow, now)
 
     def _evaluate_schedule_trigger(self, workflow, trigger, now):
         """Simple schedule: fire at a specific time-of-day (HH:MM) every day."""
-        time_str = trigger.get("time", "")  # e.g. "07:30"
+        time_str = trigger.get("time", "")
         if not time_str:
             return
         try:
-            h, m = map(int, time_str.split(":"))
+            hour, minute = map(int, time_str.split(":"))
         except Exception:
             return
-        # Fire if within the current check window
-        target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         diff = abs((now - target).total_seconds())
         if diff <= self.check_interval:
             self._fire_if_ready(workflow, now)
 
     def _fire_if_ready(self, workflow, now):
-        wid = workflow.get("id")
-        last = self._last_triggered.get(wid)
+        workflow_id = workflow.get("id")
+        last = self._last_triggered.get(workflow_id)
         cooldown = workflow.get("cooldown_seconds", self.cooldown_seconds)
         if last and (now - last).total_seconds() < cooldown:
             return
         result = self._execute_workflow_actions(workflow)
         if result:
-            self._last_triggered[wid] = now
-            self.storage.increment_workflow_run(wid)
+            self._last_triggered[workflow_id] = now
+            self.storage.increment_workflow_run(workflow_id)
 
     def _execute_workflow_actions(self, workflow: dict) -> list:
         """Execute all actions in a workflow. Returns list of results."""
         actions = workflow.get("actions", [])
-        # Backwards compat with old single-action schema
         if not actions and "action" in workflow:
             old = workflow["action"]
             actions = [{"type": "device", "device": old.get("device"), "command": old.get("command")}]
@@ -138,24 +141,19 @@ class ExecutionEngine:
         devices = self.storage.get_all_devices()
 
         for action in actions:
-            atype = action.get("type", "device")
+            action_type = action.get("type", "device")
 
-            if atype == "device":
-                device_name = action.get("device")
-                command = action.get("command", "ON")
-                if not device_name or device_name not in devices:
-                    print(f"[Engine] Action device '{device_name}' not found.")
-                    continue
-                topic = devices[device_name]["topic_base"] + "/set"
-                self.mqtt.publish(topic, command)
-                self.storage.update_device_field(device_name, "status", command)
-                self.storage.add_log("success", "engine",
-                    f"Workflow '{workflow.get('name')}' fired: {device_name} → {command}",
-                    {"workflow_id": workflow.get("id"), "device": device_name, "command": command})
-                results.append({"device": device_name, "command": command})
-                print(f"[Engine] '{workflow.get('name')}': {device_name} → {command}")
+            if action_type == "device":
+                result = self.execute_device_action(
+                    action.get("device"),
+                    action.get("command", "ON"),
+                    source="engine",
+                    workflow=workflow,
+                )
+                if result:
+                    results.append(result)
 
-            elif atype == "brightness":
+            elif action_type == "brightness":
                 device_name = action.get("device")
                 level = action.get("level", 50)
                 if not device_name or device_name not in devices:
@@ -165,9 +163,77 @@ class ExecutionEngine:
                 self.storage.update_device_field(device_name, "brightness", level)
                 results.append({"device": device_name, "brightness": level})
 
-            elif atype == "log":
+            elif action_type == "camera_monitor":
+                result = self.execute_device_action(
+                    action.get("device") or self._default_camera_device(),
+                    action.get("command", "ON"),
+                    source="engine",
+                    workflow=workflow,
+                )
+                if result:
+                    result["action_type"] = "camera_monitor"
+                    results.append(result)
+
+            elif action_type == "log":
                 msg = action.get("message", "Workflow fired")
                 self.storage.add_log("info", "engine", msg, {"workflow": workflow.get("name")})
                 results.append({"log": msg})
 
         return results
+
+    def execute_device_action(self, device_name: str, command: str, source: str = "engine", workflow: dict = None) -> dict:
+        devices = self.storage.get_all_devices()
+        command = str(command or "").upper()
+        if not device_name or device_name not in devices:
+            print(f"[Engine] Action device '{device_name}' not found.")
+            return {}
+
+        device = devices[device_name]
+        workflow_name = workflow.get("name") if workflow else None
+        workflow_id = workflow.get("id") if workflow else None
+
+        if device.get("type") == "security_camera":
+            if command not in {"ON", "OFF"}:
+                return {"error": "Security camera command must be ON or OFF", "device": device_name}
+            if not self.camera_service:
+                self.storage.add_log("error", source, "Security camera service is not available", {"device": device_name})
+                return {"error": "Security camera service is not available", "device": device_name}
+
+            result = self.camera_service.start() if command == "ON" else self.camera_service.stop()
+            self.storage.update_device_field(device_name, "status", command)
+            self.storage.add_log(
+                "success",
+                source,
+                self._action_message(source, workflow_name, device_name, command),
+                {"workflow_id": workflow_id, "device": device_name, "command": command, "result": result},
+            )
+            return {"device": device_name, "command": command, "result": result}
+
+        topic = device["topic_base"] + "/set"
+        success = self.mqtt.publish(topic, command)
+        if success:
+            self.storage.update_device_field(device_name, "status", command)
+        self.storage.add_log(
+            "success" if success else "error",
+            source,
+            self._action_message(source, workflow_name, device_name, command),
+            {"workflow_id": workflow_id, "device": device_name, "command": command, "topic": topic},
+        )
+        print(f"[Engine] {device_name} -> {command}")
+        return {"device": device_name, "command": command, "success": success}
+
+    def _default_camera_device(self) -> str:
+        devices = self.storage.get_all_devices()
+        for name, device in devices.items():
+            if device.get("type") == "security_camera":
+                return name
+        return "laptop_security_camera"
+
+    def _action_message(self, source: str, workflow_name: str, device_name: str, command: str) -> str:
+        if workflow_name:
+            return f"Workflow '{workflow_name}' fired: {device_name} -> {command}"
+        if source == "ai":
+            return f"AI turned {command} -> {device_name}"
+        if source == "api":
+            return f"User turned {command} -> {device_name}"
+        return f"{device_name} -> {command}"

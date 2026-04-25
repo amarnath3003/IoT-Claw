@@ -60,7 +60,7 @@ export default function Devices({ deviceStates }) {
       <form onSubmit={handleSubmit} className="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4 h-max">
         <div>
           <h2 className="text-base font-medium text-white">Add MQTT Device</h2>
-          <p className="text-xs text-gray-500 mt-1">Register a real device topic before using it in chat or workflows.</p>
+          <p className="text-xs text-gray-500 mt-1">Register a real device topic before using it in chat or workflows. The laptop camera simulator is added automatically.</p>
         </div>
 
         <div>
@@ -80,6 +80,7 @@ export default function Devices({ deviceStates }) {
               <option value="switch">Switch</option>
               <option value="sensor">Sensor</option>
               <option value="dimmable_switch">Dimmable switch</option>
+              <option value="security_camera">Security camera</option>
               <option value="generic">Generic</option>
             </select>
           </div>

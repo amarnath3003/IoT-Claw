@@ -12,6 +12,7 @@ from ai_agent import run_chat
 from mqtt_client import MQTTClient
 from storage import Storage
 from execution_engine import ExecutionEngine
+from security_camera import SecurityCameraSimulator
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -43,18 +44,22 @@ check_interval = float(os.getenv("EXECUTION_ENGINE_INTERVAL", "5"))
 manager = ConnectionManager()
 storage = Storage(storage_file)
 mqtt = MQTTClient(storage=storage, ws_broadcast_fn=manager.broadcast)
-engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval)
+camera_service = SecurityCameraSimulator(storage=storage, ws_broadcast_fn=manager.broadcast)
+engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval, camera_service=camera_service)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    camera_service.bind_loop(asyncio.get_running_loop())
+    camera_service.ensure_registered()
     mqtt_host = os.getenv("MQTT_BROKER_HOST", "localhost")
     mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     mqtt.connect(host=mqtt_host, port=mqtt_port)
     asyncio.create_task(engine.run())
     yield
     # Shutdown
+    camera_service.stop()
     mqtt.disconnect()
 
 
@@ -108,6 +113,21 @@ async def delete_device(name: str):
     storage.add_log("warning", "api", f"Deleted device: {name}", {"device": name})
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return {"status": "deleted", "device": name}
+
+
+@app.post("/devices/{name}/command")
+async def command_device(name: str, body: dict):
+    """Send an ON/OFF command to a device, including simulated devices."""
+    command = str(body.get("command", "")).upper()
+    if command not in {"ON", "OFF"}:
+        raise HTTPException(status_code=400, detail="command must be ON or OFF")
+    result = engine.execute_device_action(name, command, source="api")
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return {"status": "sent", "device": name, "command": command, "result": result}
 
 
 @app.get("/logs")

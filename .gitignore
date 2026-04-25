@@ -21,6 +21,8 @@ yarn-error.log*
 
 # Project Specific Runtime Data
 backend/storage.json
+backend/captures/
+captures/
 
 # OS Generated Files
 .DS_Store

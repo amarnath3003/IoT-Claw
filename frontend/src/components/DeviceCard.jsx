@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { sendChat } from '../api'
+import { commandDevice } from '../api'
 
 export default function DeviceCard({ name, data }) {
   const [toggling, setToggling] = useState(false)
@@ -7,22 +7,21 @@ export default function DeviceCard({ name, data }) {
   const statusStr = String(data.status ?? '').toUpperCase()
   const isOn = statusStr === 'ON'
   const isNumeric = !isNaN(parseFloat(data.status)) && data.status !== 'ON' && data.status !== 'OFF'
-
   const deviceLabel = name.replace(/_/g, ' ')
 
   const typeIcon = {
-    switch: '⚡',
-    sensor: '📡',
-    dimmable_switch: '💡',
-    generic: '🔧',
-  }[data.type] ?? '🔧'
+    switch: 'SW',
+    sensor: 'SNS',
+    dimmable_switch: 'DIM',
+    security_camera: 'CAM',
+    generic: 'GEN',
+  }[data.type] ?? 'GEN'
 
   const toggle = async () => {
     if (toggling) return
     setToggling(true)
     try {
-      const action = isOn ? 'off' : 'on'
-      await sendChat(`Turn ${action} the ${name}`, [])
+      await commandDevice(name, isOn ? 'OFF' : 'ON')
     } catch (e) {
       console.error('[DeviceCard] toggle failed:', e)
     } finally {
@@ -34,17 +33,21 @@ export default function DeviceCard({ name, data }) {
     ? new Date(data.last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null
 
+  const lastDetectionTime = data.last_detection?.time_utc
+    ? new Date(data.last_detection.time_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null
+
   return (
     <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 flex flex-col gap-3 hover:border-gray-600 transition-colors">
-      {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span style={{ fontSize: 16 }}>{typeIcon}</span>
+          <span className="text-[10px] font-semibold text-cyan-300 border border-cyan-900 rounded px-1.5 py-0.5">
+            {typeIcon}
+          </span>
           <span className="text-sm font-medium text-gray-200 capitalize truncate">
             {deviceLabel}
           </span>
         </div>
-        {/* Toggle switch for on/off devices */}
         {!isNumeric && (
           <button
             onClick={toggle}
@@ -62,7 +65,6 @@ export default function DeviceCard({ name, data }) {
         )}
       </div>
 
-      {/* Value */}
       <div className="flex items-end gap-1">
         {isNumeric ? (
           <>
@@ -78,7 +80,16 @@ export default function DeviceCard({ name, data }) {
         )}
       </div>
 
-      {/* Type badge + last updated */}
+      {data.type === 'security_camera' && (
+        <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          {lastDetectionTime ? (
+            <>Last detection: {data.last_detection.detected?.join(', ') || 'movement'} at {lastDetectionTime}</>
+          ) : (
+            <>CV monitor is ready. Turn it on to scan for faces or bodies.</>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mt-auto">
         <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400 capitalize">
           {data.type ?? 'generic'}
