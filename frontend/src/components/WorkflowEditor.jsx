@@ -16,44 +16,27 @@ import WorkflowList from './WorkflowList'
 const OPERATORS = ['>', '<', '>=', '<=', '==', '!=']
 
 const BLOCKS = [
-  { type: 'trigger.sensor', label: 'Sensor Trigger' },
-  { type: 'trigger.chat', label: 'Chat Code Trigger' },
-  { type: 'trigger.schedule', label: 'Schedule Trigger' },
-  { type: 'action.device', label: 'Device Action' },
-  { type: 'action.brightness', label: 'Brightness Action' },
-  { type: 'action.camera_monitor', label: 'Camera CV Monitor' },
-  { type: 'action.log', label: 'Log Action' },
+  { type: 'trigger.sensor',   label: 'Sensor Trigger',   icon: '◈', cat: 'trigger' },
+  { type: 'trigger.chat',     label: 'Chat Code',        icon: '⌘', cat: 'trigger' },
+  { type: 'trigger.schedule', label: 'Schedule',         icon: '⏱', cat: 'trigger' },
+  { type: 'action.device',    label: 'Device Action',    icon: '⏻', cat: 'action'  },
+  { type: 'action.brightness',label: 'Brightness',       icon: '◑', cat: 'action'  },
+  { type: 'action.camera_monitor', label: 'Camera CV',   icon: '⊙', cat: 'action'  },
+  { type: 'action.log',       label: 'Log Message',      icon: '⊟', cat: 'action'  },
 ]
 
 const DEFAULT_CONFIG = {
-  'trigger.sensor': { device: '', operator: '>', value: '' },
-  'trigger.chat': { code: '' },
-  'trigger.schedule': { time: '07:30' },
-  'action.device': { device: '', command: 'ON' },
-  'action.brightness': { device: '', level: 50 },
+  'trigger.sensor':        { device: '', operator: '>', value: '' },
+  'trigger.chat':          { code: '' },
+  'trigger.schedule':      { time: '07:30' },
+  'action.device':         { device: '', command: 'ON' },
+  'action.brightness':     { device: '', level: 50 },
   'action.camera_monitor': { device: 'laptop_security_camera', command: 'ON' },
-  'action.log': { message: 'Workflow fired' },
+  'action.log':            { message: 'Workflow fired' },
 }
 
-const INITIAL_NODES = [
-  {
-    id: 'trigger-1',
-    type: 'default',
-    position: { x: 80, y: 120 },
-    data: makeNodeData('trigger.sensor'),
-  },
-  {
-    id: 'action-1',
-    type: 'default',
-    position: { x: 430, y: 120 },
-    data: makeNodeData('action.device'),
-  },
-]
-
-const INITIAL_EDGES = [{ id: 'trigger-1-action-1', source: 'trigger-1', target: 'action-1' }]
-
 function makeNodeData(blockType) {
-  const block = BLOCKS.find(item => item.type === blockType)
+  const block = BLOCKS.find(b => b.type === blockType)
   return {
     blockType,
     label: block?.label || blockType,
@@ -62,177 +45,165 @@ function makeNodeData(blockType) {
 }
 
 function buildNodeLabel(data) {
-  const config = data.config || {}
+  const c = data.config || {}
+  const block = BLOCKS.find(b => b.type === data.blockType)
+  const icon = block?.icon || '⬡'
   let detail = ''
-  if (data.blockType === 'trigger.sensor') detail = `${config.device || 'device'} ${config.operator} ${config.value || 'value'}`
-  if (data.blockType === 'trigger.chat') detail = config.code ? `"${config.code}"` : 'secret phrase'
-  if (data.blockType === 'trigger.schedule') detail = config.time || 'HH:MM'
-  if (data.blockType === 'action.device') detail = `${config.device || 'device'} -> ${config.command}`
-  if (data.blockType === 'action.brightness') detail = `${config.device || 'device'} -> ${config.level}%`
-  if (data.blockType === 'action.camera_monitor') detail = `${config.device || 'camera'} -> CV ${config.command}`
-  if (data.blockType === 'action.log') detail = config.message || 'log message'
+  if (data.blockType === 'trigger.sensor')        detail = `${c.device || 'device'} ${c.operator} ${c.value || 'val'}`
+  if (data.blockType === 'trigger.chat')          detail = c.code ? `"${c.code}"` : 'secret phrase'
+  if (data.blockType === 'trigger.schedule')      detail = c.time || 'HH:MM'
+  if (data.blockType === 'action.device')         detail = `${c.device || 'device'} → ${c.command}`
+  if (data.blockType === 'action.brightness')     detail = `${c.device || 'device'} → ${c.level}%`
+  if (data.blockType === 'action.camera_monitor') detail = `${c.device || 'camera'} CV ${c.command}`
+  if (data.blockType === 'action.log')            detail = c.message || 'log…'
 
+  const isTrigger = data.blockType.startsWith('trigger.')
   return (
-    <div className="text-left">
-      <div className="text-xs font-semibold text-gray-100">{data.label}</div>
-      <div className="text-[11px] text-gray-400 mt-1 max-w-[160px] truncate">{detail}</div>
+    <div style={{
+      padding: '8px 12px',
+      borderRadius: 10,
+      background: isTrigger ? 'rgba(255,107,0,0.10)' : 'rgba(34,197,94,0.08)',
+      border: `1px solid ${isTrigger ? 'rgba(255,107,0,0.3)' : 'rgba(34,197,94,0.25)'}`,
+      minWidth: 160,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+        <span style={{ fontSize: 12, color: isTrigger ? 'var(--accent)' : '#22c55e' }}>{icon}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: isTrigger ? 'var(--accent)' : '#22c55e', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{data.label}</span>
+      </div>
+      <div style={{ fontSize: 10, color: '#8a8f98', fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{detail}</div>
     </div>
   )
 }
 
 function toCanvasNode(node) {
-  return {
-    ...node,
-    data: {
-      ...node.data,
-      label: buildNodeLabel(node.data),
-    },
-  }
+  return { ...node, data: { ...node.data, label: buildNodeLabel(node.data) } }
 }
 
+const INITIAL_NODES = [
+  { id: 'trigger-1', type: 'default', position: { x: 80,  y: 120 }, data: makeNodeData('trigger.sensor') },
+  { id: 'action-1',  type: 'default', position: { x: 430, y: 120 }, data: makeNodeData('action.device')  },
+]
+const INITIAL_EDGES = [{ id: 'e0', source: 'trigger-1', target: 'action-1', animated: true }]
+
+/* ─────────────────────────────────────────────── */
 function WorkflowCanvas({ deviceStates }) {
-  const [devices, setDevices] = useState(deviceStates || {})
-  const [workflows, setWorkflows] = useState([])
+  const [devices, setDevices]           = useState(deviceStates || {})
+  const [workflows, setWorkflows]       = useState([])
   const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES.map(toCanvasNode))
   const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES)
   const [selectedNodeId, setSelectedNodeId] = useState('trigger-1')
-  const [meta, setMeta] = useState({ name: '', description: '', cooldown_seconds: 60, enabled: true })
-  const [message, setMessage] = useState('')
-  const [saving, setSaving] = useState(false)
-  const { screenToFlowPosition } = useReactFlow()
+  const [meta, setMeta]                 = useState({ name: '', description: '', cooldown_seconds: 60, enabled: true })
+  const [message, setMessage]           = useState('')
+  const [msgType, setMsgType]           = useState('error')
+  const [saving, setSaving]             = useState(false)
+  const { screenToFlowPosition }        = useReactFlow()
 
+  useEffect(() => { if (Object.keys(deviceStates || {}).length) setDevices(deviceStates) }, [deviceStates])
   useEffect(() => {
-    if (Object.keys(deviceStates || {}).length) setDevices(deviceStates)
-  }, [deviceStates])
-
-  useEffect(() => {
-    getState().then(res => setDevices(res.data)).catch(() => {})
+    getState().then(r => setDevices(r.data)).catch(() => {})
     refreshWorkflows()
   }, [])
 
-  const deviceNames = Object.keys(devices)
-  const selectedNode = nodes.find(node => node.id === selectedNodeId)
-
+  const deviceNames   = Object.keys(devices)
+  const selectedNode  = nodes.find(n => n.id === selectedNodeId)
   const renderedNodes = useMemo(() => nodes, [nodes])
 
-  const refreshWorkflows = () => {
-    getWorkflows().then(res => setWorkflows(res.data)).catch(() => {})
-  }
+  const refreshWorkflows = () => getWorkflows().then(r => setWorkflows(r.data)).catch(() => {})
 
   const onConnect = useCallback(
-    params => setEdges(current => addEdge({ ...params, animated: true }, current)),
+    params => setEdges(cur => addEdge({ ...params, animated: true, style: { stroke: 'var(--accent)', strokeWidth: 2 } }, cur)),
     [setEdges],
   )
 
   const addBlock = (blockType, position = null) => {
     const isTrigger = blockType.startsWith('trigger.')
-    setNodes(current => {
-      const withoutExtraTrigger = isTrigger ? current.filter(node => !node.data.raw?.blockType?.startsWith('trigger.') && !node.data.blockType?.startsWith('trigger.')) : current
-      const id = `${blockType.replace('.', '-')}-${Date.now()}`
+    setNodes(cur => {
+      const filtered = isTrigger
+        ? cur.filter(n => !(n.data.raw?.blockType || n.data.blockType || '').startsWith('trigger.'))
+        : cur
+      const id      = `${blockType.replace('.', '-')}-${Date.now()}`
       const rawData = makeNodeData(blockType)
-      const node = {
+      const node    = {
         id,
         type: 'default',
-        position: position || { x: isTrigger ? 80 : 430, y: 120 + current.length * 40 },
-        data: {
-          ...rawData,
-          raw: rawData,
-          label: buildNodeLabel(rawData),
-        },
+        position: position || { x: isTrigger ? 80 : 430, y: 120 + cur.length * 50 },
+        data: { ...rawData, raw: rawData, label: buildNodeLabel(rawData) },
       }
-      return [...withoutExtraTrigger, node]
+      return [...filtered, node]
     })
   }
 
-  const onDragStart = (event, blockType) => {
-    event.dataTransfer.setData('application/reactflow', blockType)
-    event.dataTransfer.effectAllowed = 'move'
+  const onDragStart = (e, blockType) => {
+    e.dataTransfer.setData('application/reactflow', blockType)
+    e.dataTransfer.effectAllowed = 'move'
   }
 
-  const onDrop = (event) => {
-    event.preventDefault()
-    const blockType = event.dataTransfer.getData('application/reactflow')
-    if (!blockType) return
-    addBlock(blockType, screenToFlowPosition({ x: event.clientX, y: event.clientY }))
+  const onDrop = e => {
+    e.preventDefault()
+    const blockType = e.dataTransfer.getData('application/reactflow')
+    if (blockType) addBlock(blockType, screenToFlowPosition({ x: e.clientX, y: e.clientY }))
   }
 
   const updateSelectedConfig = (field, value) => {
-    setNodes(current => current.map(node => {
+    setNodes(cur => cur.map(node => {
       if (node.id !== selectedNodeId) return node
       const rawData = node.data.raw || { ...node.data, label: undefined }
-      const nextData = {
-        ...rawData,
-        config: { ...rawData.config, [field]: value },
-      }
-      return {
-        ...node,
-        data: {
-          ...nextData,
-          raw: nextData,
-          label: buildNodeLabel(nextData),
-        },
-      }
+      const nextData = { ...rawData, config: { ...rawData.config, [field]: value } }
+      return { ...node, data: { ...nextData, raw: nextData, label: buildNodeLabel(nextData) } }
     }))
   }
 
   const getRaw = node => node.data.raw || { ...node.data, label: undefined }
 
   const orderedActions = (triggerNode, actionNodes) => {
-    const byId = new Map(actionNodes.map(node => [node.id, node]))
+    const byId = new Map(actionNodes.map(n => [n.id, n]))
     const visited = new Set()
     const order = []
-    const walk = (sourceId) => {
-      edges.filter(edge => edge.source === sourceId).forEach(edge => {
-        const action = byId.get(edge.target)
-        if (action && !visited.has(action.id)) {
-          visited.add(action.id)
-          order.push(action)
-          walk(action.id)
-        }
+    const walk = srcId => {
+      edges.filter(e => e.source === srcId).forEach(e => {
+        const a = byId.get(e.target)
+        if (a && !visited.has(a.id)) { visited.add(a.id); order.push(a); walk(a.id) }
       })
     }
     walk(triggerNode.id)
     return order
   }
 
-  const actionPayload = (node) => {
-    const data = getRaw(node)
-    const config = data.config
-    if (data.blockType === 'action.device') return { type: 'device', device: config.device, command: config.command }
-    if (data.blockType === 'action.brightness') return { type: 'brightness', device: config.device, level: Number(config.level) }
-    if (data.blockType === 'action.camera_monitor') return { type: 'camera_monitor', device: config.device, command: config.command }
-    return { type: 'log', message: config.message }
+  const actionPayload = node => {
+    const { blockType, config: c } = getRaw(node)
+    if (blockType === 'action.device')         return { type: 'device',         device: c.device, command: c.command }
+    if (blockType === 'action.brightness')     return { type: 'brightness',     device: c.device, level: Number(c.level) }
+    if (blockType === 'action.camera_monitor') return { type: 'camera_monitor', device: c.device, command: c.command }
+    return { type: 'log', message: c.message }
   }
 
-  const triggerPayload = (node) => {
-    const data = getRaw(node)
-    const config = data.config
-    if (data.blockType === 'trigger.sensor') return { type: 'sensor', device: config.device, operator: config.operator, value: isNaN(Number(config.value)) ? config.value : Number(config.value) }
-    if (data.blockType === 'trigger.chat') return { type: 'chat', code: config.code }
-    return { type: 'schedule', time: config.time }
+  const triggerPayload = node => {
+    const { blockType, config: c } = getRaw(node)
+    if (blockType === 'trigger.sensor') return { type: 'sensor', device: c.device, operator: c.operator, value: isNaN(Number(c.value)) ? c.value : Number(c.value) }
+    if (blockType === 'trigger.chat')   return { type: 'chat',   code: c.code }
+    return { type: 'schedule', time: c.time }
   }
 
   const validateAndBuild = () => {
-    const rawNodes = nodes.map(node => ({ ...node, data: getRaw(node) }))
-    const triggerNodes = rawNodes.filter(node => node.data.blockType.startsWith('trigger.'))
-    const actionNodes = rawNodes.filter(node => node.data.blockType.startsWith('action.'))
-    if (!meta.name.trim()) throw new Error('Workflow name is required.')
-    if (triggerNodes.length !== 1) throw new Error('Add exactly one trigger block.')
-    if (actionNodes.length === 0) throw new Error('Add at least one action block.')
+    const rawNodes     = nodes.map(n => ({ ...n, data: getRaw(n) }))
+    const triggerNodes = rawNodes.filter(n => n.data.blockType.startsWith('trigger.'))
+    const actionNodes  = rawNodes.filter(n => n.data.blockType.startsWith('action.'))
+    if (!meta.name.trim())          throw new Error('Workflow name is required.')
+    if (triggerNodes.length !== 1)  throw new Error('Add exactly one trigger block.')
+    if (actionNodes.length === 0)   throw new Error('Add at least one action block.')
 
     const trigger = triggerPayload(triggerNodes[0])
-    if (trigger.type === 'sensor' && (!trigger.device || trigger.value === '')) throw new Error('Sensor trigger needs a device and value.')
-    if (trigger.type === 'chat' && !trigger.code.trim()) throw new Error('Chat trigger needs a secret phrase.')
-    if (trigger.type === 'schedule' && !/^\d{2}:\d{2}$/.test(trigger.time)) throw new Error('Schedule trigger time must be HH:MM.')
+    if (trigger.type === 'sensor'   && (!trigger.device || trigger.value === '')) throw new Error('Sensor trigger needs a device and value.')
+    if (trigger.type === 'chat'     && !trigger.code.trim()) throw new Error('Chat trigger needs a secret phrase.')
+    if (trigger.type === 'schedule' && !/^\d{2}:\d{2}$/.test(trigger.time)) throw new Error('Schedule time must be HH:MM.')
 
-    const connectedActions = orderedActions(triggerNodes[0], actionNodes)
-    if (connectedActions.length === 0) throw new Error('Connect the trigger block to at least one action block.')
+    const connected = orderedActions(triggerNodes[0], actionNodes)
+    if (connected.length === 0) throw new Error('Connect the trigger to at least one action block.')
 
-    const actions = connectedActions.map(actionPayload)
-    for (const action of actions) {
-      if ((action.type === 'device' || action.type === 'brightness' || action.type === 'camera_monitor') && !action.device) {
+    const actions = connected.map(actionPayload)
+    for (const a of actions) {
+      if (['device', 'brightness', 'camera_monitor'].includes(a.type) && !a.device)
         throw new Error('Device, brightness, and camera actions need a target device.')
-      }
     }
 
     return {
@@ -243,7 +214,7 @@ function WorkflowCanvas({ deviceStates }) {
       trigger,
       actions,
       graph: {
-        nodes: rawNodes.map(node => ({ id: node.id, blockType: node.data.blockType, position: node.position, config: node.data.config })),
+        nodes: rawNodes.map(n => ({ id: n.id, blockType: n.data.blockType, position: n.position, config: n.data.config })),
         edges,
       },
     }
@@ -254,53 +225,120 @@ function WorkflowCanvas({ deviceStates }) {
     setSaving(true)
     try {
       const payload = validateAndBuild()
-      const res = await createWorkflow(payload)
-      setWorkflows(current => [...current, res.data])
+      const res     = await createWorkflow(payload)
+      setWorkflows(cur => [...cur, res.data])
       setMeta({ name: '', description: '', cooldown_seconds: 60, enabled: true })
-      setMessage(`Saved workflow "${res.data.name}".`)
+      setMessage(`Workflow "${res.data.name}" saved successfully.`)
+      setMsgType('success')
     } catch (err) {
       setMessage(err.message || 'Failed to save workflow.')
-    } finally {
-      setSaving(false)
-    }
+      setMsgType('error')
+    } finally { setSaving(false) }
   }
 
   const resetCanvas = () => {
     setNodes(INITIAL_NODES.map(toCanvasNode))
     setEdges(INITIAL_EDGES)
     setSelectedNodeId('trigger-1')
+    setMessage('')
   }
 
-  const fieldClass = 'w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors'
-  const labelClass = 'block text-xs text-gray-400 mb-1'
-
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-[260px_1fr_320px] gap-4">
-        <aside className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-4">
-          <div>
-            <h2 className="text-sm font-medium text-white">Block Palette</h2>
-            <p className="text-xs text-gray-500 mt-1">Drag blocks onto the canvas and connect them left to right.</p>
-          </div>
-          <div className="space-y-2">
-            {BLOCKS.map(block => (
-              <button
-                key={block.type}
-                draggable
-                onDragStart={event => onDragStart(event, block.type)}
-                onClick={() => addBlock(block.type)}
-                className="w-full text-left bg-gray-900 border border-gray-700 hover:border-cyan-700 rounded-lg px-3 py-2 text-xs text-gray-300 transition-colors"
-              >
-                {block.label}
-              </button>
-            ))}
-          </div>
-          <button onClick={resetCanvas} className="w-full bg-gray-700 hover:bg-gray-600 text-gray-200 py-2 rounded-lg text-xs">
-            Reset Canvas
-          </button>
-        </aside>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-        <section className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden h-[620px]">
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="led-pulse" />
+          <h2 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Workflow Builder
+          </h2>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <span className="neu-badge">{workflows.length} saved</span>
+          <button id="reset-canvas-btn" onClick={resetCanvas} className="neu-btn" style={{ padding: '6px 14px', fontSize: 11 }}>
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+
+      {/* ── Three-column builder ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr 300px', gap: 16, alignItems: 'start' }}>
+
+        {/* ── LEFT: Block Palette ── */}
+        <div className="neu-section">
+          <div className="neu-section-header">
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Block Palette
+            </span>
+            <span className="neu-badge">drag / click</span>
+          </div>
+
+          <div className="neu-section-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Triggers */}
+            <div>
+              <div className="neu-chunk-header" style={{ marginBottom: 8 }}>Triggers</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {BLOCKS.filter(b => b.cat === 'trigger').map(block => (
+                  <button
+                    key={block.type}
+                    id={`palette-${block.type}`}
+                    draggable
+                    onDragStart={e => onDragStart(e, block.type)}
+                    onClick={() => addBlock(block.type)}
+                    className="neu-btn"
+                    style={{
+                      justifyContent: 'flex-start', padding: '8px 12px', gap: 8, fontSize: 12, textAlign: 'left',
+                      borderLeft: '3px solid var(--accent)',
+                    }}
+                  >
+                    <span style={{ color: 'var(--accent)', fontSize: 14 }}>{block.icon}</span>
+                    <span style={{ color: 'var(--text-main)' }}>{block.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <hr className="neu-divider" />
+
+            {/* Actions */}
+            <div>
+              <div className="neu-chunk-header" style={{ marginBottom: 8 }}>Actions</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {BLOCKS.filter(b => b.cat === 'action').map(block => (
+                  <button
+                    key={block.type}
+                    id={`palette-${block.type}`}
+                    draggable
+                    onDragStart={e => onDragStart(e, block.type)}
+                    onClick={() => addBlock(block.type)}
+                    className="neu-btn"
+                    style={{
+                      justifyContent: 'flex-start', padding: '8px 12px', gap: 8, fontSize: 12, textAlign: 'left',
+                      borderLeft: '3px solid #22c55e',
+                    }}
+                  >
+                    <span style={{ color: '#22c55e', fontSize: 14 }}>{block.icon}</span>
+                    <span style={{ color: 'var(--text-main)' }}>{block.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="neu-alert-info" style={{ fontSize: 11 }}>
+              Drag onto canvas or click to add. Connect trigger → action.
+            </div>
+          </div>
+        </div>
+
+        {/* ── CENTER: ReactFlow Canvas ── */}
+        <div style={{
+          borderRadius: 20,
+          overflow: 'hidden',
+          height: 620,
+          boxShadow: 'var(--sh-deep)',
+          border: '1px solid rgba(255,255,255,0.05)',
+        }}>
           <ReactFlow
             nodes={renderedNodes}
             edges={edges}
@@ -308,85 +346,129 @@ function WorkflowCanvas({ deviceStates }) {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onDrop={onDrop}
-            onDragOver={event => event.preventDefault()}
+            onDragOver={e => e.preventDefault()}
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
             fitView
+            style={{ background: '#0d0f11' }}
           >
-            <Background />
-            <Controls />
+            <Background color="#2a2f34" gap={24} size={1} />
+            <Controls style={{
+              background: 'var(--bg-card)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 10,
+              boxShadow: 'var(--sh-flat)',
+            }} />
           </ReactFlow>
-        </section>
+        </div>
 
-        <aside className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-4">
-          <div>
-            <h2 className="text-sm font-medium text-white">Workflow Details</h2>
-            <p className="text-xs text-gray-500 mt-1">Configure the selected block and save the graph.</p>
+        {/* ── RIGHT: Inspector + Meta ── */}
+        <div className="neu-section">
+          <div className="neu-section-header">
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Workflow Details
+            </span>
+            {selectedNode && (
+              <span className="neu-badge neu-badge-accent" style={{ fontSize: 10 }}>
+                {(selectedNode.data.raw?.blockType || selectedNode.data.blockType || '').split('.')[1] || 'block'}
+              </span>
+            )}
           </div>
 
-          <div>
-            <label className={labelClass}>Name</label>
-            <input className={fieldClass} value={meta.name} onChange={e => setMeta(current => ({ ...current, name: e.target.value }))} placeholder="Secret light code" />
-          </div>
-          <div>
-            <label className={labelClass}>Description</label>
-            <textarea className={fieldClass} rows={2} value={meta.description} onChange={e => setMeta(current => ({ ...current, description: e.target.value }))} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="neu-section-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Workflow meta */}
             <div>
-              <label className={labelClass}>Cooldown</label>
-              <input type="number" min="0" className={fieldClass} value={meta.cooldown_seconds} onChange={e => setMeta(current => ({ ...current, cooldown_seconds: e.target.value }))} />
+              <label className="neu-label" htmlFor="wf-name">Name</label>
+              <input id="wf-name" className="neu-input" value={meta.name}
+                onChange={e => setMeta(m => ({ ...m, name: e.target.value }))}
+                placeholder="Secret light code" />
             </div>
-            <label className="flex items-end gap-2 text-xs text-gray-400 pb-2">
-              <input type="checkbox" checked={meta.enabled} onChange={e => setMeta(current => ({ ...current, enabled: e.target.checked }))} />
-              Enabled
-            </label>
+
+            <div>
+              <label className="neu-label" htmlFor="wf-desc">Description</label>
+              <textarea id="wf-desc" className="neu-input" rows={2} value={meta.description}
+                onChange={e => setMeta(m => ({ ...m, description: e.target.value }))}
+                style={{ resize: 'none', color: 'var(--text-main)', fontFamily: 'inherit' }} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
+              <div>
+                <label className="neu-label" htmlFor="wf-cooldown">Cooldown (s)</label>
+                <input id="wf-cooldown" type="number" min="0" className="neu-input" value={meta.cooldown_seconds}
+                  onChange={e => setMeta(m => ({ ...m, cooldown_seconds: e.target.value }))} />
+              </div>
+              <div style={{ paddingBottom: 2 }}>
+                <label className="hw-toggle" title="Enable / disable workflow">
+                  <input type="checkbox" checked={meta.enabled}
+                    onChange={e => setMeta(m => ({ ...m, enabled: e.target.checked }))} />
+                  <div className="hw-toggle-track" />
+                </label>
+              </div>
+            </div>
+
+            <hr className="neu-divider" />
+
+            {/* Block inspector */}
+            {selectedNode
+              ? <BlockInspector node={selectedNode} deviceNames={deviceNames} onChange={updateSelectedConfig} />
+              : <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Click a node on the canvas to configure it.</p>
+            }
+
+            <hr className="neu-divider" />
+
+            {message && (
+              <div className={msgType === 'success' ? 'neu-alert-success' : 'neu-alert-error'}>
+                {message}
+              </div>
+            )}
+
+            <button
+              id="save-workflow-btn"
+              onClick={handleSave}
+              disabled={saving}
+              className="neu-btn-primary"
+              style={{ padding: '12px 0', width: '100%', fontSize: 13, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}
+            >
+              {saving ? 'Saving…' : '⊞ Save Workflow'}
+            </button>
           </div>
-
-          {selectedNode ? (
-            <BlockInspector
-              node={selectedNode}
-              deviceNames={deviceNames}
-              fieldClass={fieldClass}
-              labelClass={labelClass}
-              onChange={updateSelectedConfig}
-            />
-          ) : (
-            <p className="text-xs text-gray-500">Select a block to edit it.</p>
-          )}
-
-          {message && <p className={`text-xs ${message.startsWith('Saved') ? 'text-green-400' : 'text-red-400'}`}>{message}</p>}
-          <button onClick={handleSave} disabled={saving} className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
-            {saving ? 'Saving...' : 'Save Workflow'}
-          </button>
-        </aside>
+        </div>
       </div>
 
+      {/* ── Workflow List ── */}
       <WorkflowList workflows={workflows} onChanged={refreshWorkflows} />
     </div>
   )
 }
 
-function BlockInspector({ node, deviceNames, fieldClass, labelClass, onChange }) {
-  const data = node.data.raw || node.data
+/* ─────────────────────────────────────────────── */
+function BlockInspector({ node, deviceNames, onChange }) {
+  const data   = node.data.raw || node.data
   const config = data.config || {}
+  const block  = BLOCKS.find(b => b.type === data.blockType)
+  const isTrigger = data.blockType.startsWith('trigger.')
 
   return (
-    <div className="border-t border-gray-700 pt-4 space-y-3">
-      <h3 className="text-xs font-medium text-cyan-400">{data.label}</h3>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 16, color: isTrigger ? 'var(--accent)' : '#22c55e' }}>{block?.icon}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: isTrigger ? 'var(--accent)' : '#22c55e', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {data.label}
+        </span>
+      </div>
 
       {data.blockType === 'trigger.sensor' && (
         <>
-          <DeviceSelect value={config.device} deviceNames={deviceNames} fieldClass={fieldClass} labelClass={labelClass} onChange={value => onChange('device', value)} />
-          <div className="grid grid-cols-2 gap-2">
+          <DeviceSelect value={config.device} deviceNames={deviceNames} label="Sensor device" onChange={v => onChange('device', v)} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div>
-              <label className={labelClass}>Operator</label>
-              <select className={fieldClass} value={config.operator} onChange={e => onChange('operator', e.target.value)}>
-                {OPERATORS.map(operator => <option key={operator} value={operator}>{operator}</option>)}
+              <label className="neu-label">Operator</label>
+              <select className="neu-input" value={config.operator} onChange={e => onChange('operator', e.target.value)}>
+                {OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelClass}>Value</label>
-              <input className={fieldClass} value={config.value} onChange={e => onChange('value', e.target.value)} />
+              <label className="neu-label">Value</label>
+              <input className="neu-input" value={config.value} onChange={e => onChange('value', e.target.value)} placeholder="25" />
             </div>
           </div>
         </>
@@ -394,24 +476,24 @@ function BlockInspector({ node, deviceNames, fieldClass, labelClass, onChange })
 
       {data.blockType === 'trigger.chat' && (
         <div>
-          <label className={labelClass}>Secret phrase</label>
-          <input className={fieldClass} value={config.code} onChange={e => onChange('code', e.target.value)} placeholder="open sesame" />
+          <label className="neu-label">Secret phrase</label>
+          <input className="neu-input" value={config.code} onChange={e => onChange('code', e.target.value)} placeholder="open sesame" />
         </div>
       )}
 
       {data.blockType === 'trigger.schedule' && (
         <div>
-          <label className={labelClass}>Daily time</label>
-          <input type="time" className={fieldClass} value={config.time} onChange={e => onChange('time', e.target.value)} />
+          <label className="neu-label">Daily time</label>
+          <input type="time" className="neu-input" value={config.time} onChange={e => onChange('time', e.target.value)} />
         </div>
       )}
 
       {data.blockType === 'action.device' && (
         <>
-          <DeviceSelect value={config.device} deviceNames={deviceNames} fieldClass={fieldClass} labelClass={labelClass} onChange={value => onChange('device', value)} />
+          <DeviceSelect value={config.device} deviceNames={deviceNames} label="Target device" onChange={v => onChange('device', v)} />
           <div>
-            <label className={labelClass}>Command</label>
-            <select className={fieldClass} value={config.command} onChange={e => onChange('command', e.target.value)}>
+            <label className="neu-label">Command</label>
+            <select className="neu-input" value={config.command} onChange={e => onChange('command', e.target.value)}>
               <option value="ON">Turn ON</option>
               <option value="OFF">Turn OFF</option>
             </select>
@@ -421,47 +503,53 @@ function BlockInspector({ node, deviceNames, fieldClass, labelClass, onChange })
 
       {data.blockType === 'action.brightness' && (
         <>
-          <DeviceSelect value={config.device} deviceNames={deviceNames} fieldClass={fieldClass} labelClass={labelClass} onChange={value => onChange('device', value)} />
+          <DeviceSelect value={config.device} deviceNames={deviceNames} label="Target device" onChange={v => onChange('device', v)} />
           <div>
-            <label className={labelClass}>Brightness</label>
-            <input type="number" min="0" max="100" className={fieldClass} value={config.level} onChange={e => onChange('level', e.target.value)} />
+            <label className="neu-label">Brightness level (0–100)</label>
+            <input type="number" min="0" max="100" className="neu-input" value={config.level} onChange={e => onChange('level', e.target.value)} />
+            <div className="neu-progress-track" style={{ marginTop: 8 }}>
+              <div className="neu-progress-fill" style={{ width: `${config.level}%` }} />
+            </div>
           </div>
         </>
       )}
 
       {data.blockType === 'action.camera_monitor' && (
         <>
-          <DeviceSelect value={config.device} deviceNames={deviceNames} fieldClass={fieldClass} labelClass={labelClass} onChange={value => onChange('device', value)} />
+          <DeviceSelect value={config.device} deviceNames={deviceNames} label="Camera device" onChange={v => onChange('device', v)} />
           <div>
-            <label className={labelClass}>CV monitor command</label>
-            <select className={fieldClass} value={config.command} onChange={e => onChange('command', e.target.value)}>
-              <option value="ON">Start detecting faces/bodies</option>
+            <label className="neu-label">CV command</label>
+            <select className="neu-input" value={config.command} onChange={e => onChange('command', e.target.value)}>
+              <option value="ON">Start detecting (faces/bodies)</option>
               <option value="OFF">Stop camera monitor</option>
             </select>
           </div>
-          <p className="text-[11px] text-gray-500">
-            Sends a Telegram photo alert when a face or body is detected.
-          </p>
+          <div className="neu-alert-warn" style={{ fontSize: 11 }}>
+            Sends a Telegram alert on detection.
+          </div>
         </>
       )}
 
       {data.blockType === 'action.log' && (
         <div>
-          <label className={labelClass}>Log message</label>
-          <textarea rows={3} className={fieldClass} value={config.message} onChange={e => onChange('message', e.target.value)} />
+          <label className="neu-label">Log message</label>
+          <textarea rows={3} className="neu-input"
+            value={config.message}
+            onChange={e => onChange('message', e.target.value)}
+            style={{ resize: 'none', color: 'var(--text-main)', fontFamily: 'inherit' }} />
         </div>
       )}
     </div>
   )
 }
 
-function DeviceSelect({ value, deviceNames, fieldClass, labelClass, onChange }) {
+function DeviceSelect({ value, deviceNames, label = 'Device', onChange }) {
   return (
     <div>
-      <label className={labelClass}>Device</label>
-      <select className={fieldClass} value={value} onChange={e => onChange(e.target.value)}>
-        <option value="">Select device</option>
-        {deviceNames.map(name => <option key={name} value={name}>{name}</option>)}
+      <label className="neu-label">{label}</label>
+      <select className="neu-input" value={value} onChange={e => onChange(e.target.value)}>
+        <option value="">— select device —</option>
+        {deviceNames.map(n => <option key={n} value={n}>{n}</option>)}
       </select>
     </div>
   )

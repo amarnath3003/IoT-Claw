@@ -1,34 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
 import { commandDevice, getDevicePreviewUrl } from '../api'
 
+const TYPE_META = {
+  switch:          { icon: '⏻', label: 'SW'  },
+  sensor:          { icon: '◈', label: 'SNS' },
+  dimmable_switch: { icon: '◑', label: 'DIM' },
+  security_camera: { icon: '⊙', label: 'CAM' },
+  generic:         { icon: '⬡', label: 'GEN' },
+}
+
 export default function DeviceCard({ name, data }) {
-  const [toggling, setToggling] = useState(false)
+  const [toggling, setToggling]     = useState(false)
   const [previewTick, setPreviewTick] = useState(Date.now())
   const [previewError, setPreviewError] = useState(false)
 
-  const statusStr = String(data.status ?? '').toUpperCase()
-  const isOn = statusStr === 'ON'
-  const isNumeric = !isNaN(parseFloat(data.status)) && data.status !== 'ON' && data.status !== 'OFF'
+  const statusStr   = String(data.status ?? '').toUpperCase()
+  const isOn        = statusStr === 'ON'
+  const isNumeric   = !isNaN(parseFloat(data.status)) && data.status !== 'ON' && data.status !== 'OFF'
   const deviceLabel = name.replace(/_/g, ' ')
-
-  const typeIcon = {
-    switch: 'SW',
-    sensor: 'SNS',
-    dimmable_switch: 'DIM',
-    security_camera: 'CAM',
-    generic: 'GEN',
-  }[data.type] ?? 'GEN'
+  const meta        = TYPE_META[data.type] ?? TYPE_META.generic
 
   const toggle = async () => {
     if (toggling) return
     setToggling(true)
-    try {
-      await commandDevice(name, isOn ? 'OFF' : 'ON')
-    } catch (e) {
-      console.error('[DeviceCard] toggle failed:', e)
-    } finally {
-      setToggling(false)
-    }
+    try { await commandDevice(name, isOn ? 'OFF' : 'ON') }
+    catch (e) { console.error('[DeviceCard] toggle failed:', e) }
+    finally { setToggling(false) }
   }
 
   const lastUpdated = data.last_updated
@@ -42,92 +39,100 @@ export default function DeviceCard({ name, data }) {
   const showCameraPreview = data.type === 'security_camera' && isOn
 
   useEffect(() => {
-    if (!showCameraPreview) {
-      setPreviewError(false)
-      return
-    }
+    if (!showCameraPreview) { setPreviewError(false); return }
     setPreviewError(false)
     setPreviewTick(Date.now())
-    const timer = setInterval(() => {
-      setPreviewTick(Date.now())
-    }, 700)
-    return () => clearInterval(timer)
+    const t = setInterval(() => setPreviewTick(Date.now()), 700)
+    return () => clearInterval(t)
   }, [showCameraPreview])
 
   const previewUrl = useMemo(() => getDevicePreviewUrl(name, previewTick), [name, previewTick])
 
+  /* card accent based on state */
+  const accentColor = isNumeric ? 'var(--accent)'
+    : isOn  ? '#22c55e'
+    : 'var(--text-muted)'
+
   return (
-    <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 flex flex-col gap-3 hover:border-gray-600 transition-colors">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[10px] font-semibold text-cyan-300 border border-cyan-900 rounded px-1.5 py-0.5">
-            {typeIcon}
+    <div className="neu-plate" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* ── Header row ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          {/* type badge */}
+          <span className="neu-badge neu-badge-accent" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+            {meta.label}
           </span>
-          <span className="text-sm font-medium text-gray-200 capitalize truncate">
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-main)', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {deviceLabel}
           </span>
         </div>
+
+        {/* hardware toggle */}
         {!isNumeric && (
-          <button
-            onClick={toggle}
-            disabled={toggling}
-            title={isOn ? 'Turn off' : 'Turn on'}
-            className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none
-              ${isOn ? 'bg-cyan-500' : 'bg-gray-600'}
-              ${toggling ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200
-                ${isOn ? 'translate-x-7' : 'translate-x-1'}`}
+          <label className="hw-toggle" title={isOn ? 'Turn off' : 'Turn on'} style={{ opacity: toggling ? 0.5 : 1, cursor: toggling ? 'wait' : 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={isOn}
+              onChange={toggle}
+              disabled={toggling}
+              id={`toggle-${name}`}
             />
-          </button>
+            <div className="hw-toggle-track" />
+          </label>
         )}
       </div>
 
-      <div className="flex items-end gap-1">
+      {/* ── Status / Value ── */}
+      <div className="neu-trough" style={{ padding: '10px 14px', display: 'flex', alignItems: 'baseline', gap: 4 }}>
         {isNumeric ? (
           <>
-            <span className="text-3xl font-bold text-white leading-none">{data.status}</span>
+            <span style={{ fontSize: 28, fontWeight: 700, color: accentColor, fontVariantNumeric: 'tabular-nums', fontFamily: 'JetBrains Mono, monospace' }}>
+              {data.status}
+            </span>
             {data.unit && (
-              <span className="text-lg text-gray-400 leading-none pb-0.5">{data.unit}</span>
+              <span style={{ fontSize: 14, color: 'var(--text-dim)', paddingBottom: 2 }}>{data.unit}</span>
             )}
           </>
         ) : (
-          <span className={`text-2xl font-bold leading-none ${isOn ? 'text-cyan-400' : 'text-gray-500'}`}>
-            {isOn ? 'ON' : (statusStr || 'unknown')}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className={isOn ? 'led-pulse' : 'led led-red'} />
+            <span style={{ fontSize: 18, fontWeight: 700, color: accentColor, fontFamily: 'JetBrains Mono, monospace', letterSpacing: 2 }}>
+              {isOn ? 'ON' : (statusStr || 'UNKNOWN')}
+            </span>
+          </div>
         )}
       </div>
 
+      {/* ── Camera preview ── */}
       {data.type === 'security_camera' && (
-        <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 space-y-2">
+        <div className="neu-trough" style={{ padding: 10 }}>
           {showCameraPreview && !previewError && (
             <img
               src={previewUrl}
               alt={`${deviceLabel} live preview`}
-              className="w-full aspect-video object-cover rounded border border-amber-700/50 bg-black"
+              style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 6, display: 'block' }}
               onError={() => setPreviewError(true)}
             />
           )}
-
           {showCameraPreview && previewError && (
-            <p className="text-amber-300">Preview is warming up. Keep the camera ON for a moment.</p>
+            <p className="neu-alert-warn" style={{ margin: 0, fontSize: 11 }}>Preview warming up — keep camera ON.</p>
           )}
-
           {lastDetectionTime ? (
-            <p>Last detection: {data.last_detection.detected?.join(', ') || 'movement'} at {lastDetectionTime}</p>
+            <p style={{ margin: showCameraPreview ? '8px 0 0' : 0, fontSize: 11, color: 'var(--text-dim)' }}>
+              Detection: <strong style={{ color: '#fbbf24' }}>{data.last_detection.detected?.join(', ') || 'movement'}</strong> @ {lastDetectionTime}
+            </p>
           ) : (
-            <p>CV monitor is ready. Turn it on to scan for faces or bodies.</p>
+            <p style={{ margin: showCameraPreview ? '8px 0 0' : 0, fontSize: 11, color: 'var(--text-dim)' }}>CV monitor ready. Turn on to scan.</p>
           )}
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-auto">
-        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400 capitalize">
-          {data.type ?? 'generic'}
-        </span>
-        <span className="text-xs text-gray-500">
-          {lastUpdated ? `${lastUpdated}` : 'No data yet'}
+      {/* ── Footer ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
+        <span className="neu-badge">{data.type ?? 'generic'}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
+          {lastUpdated ? lastUpdated : '—'}
         </span>
       </div>
     </div>

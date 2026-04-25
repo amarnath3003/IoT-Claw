@@ -2,11 +2,11 @@
 #include <PubSubClient.h>
 
 // Wi-Fi
-const char* WIFI_SSID = "YOUR_WIFI_NAME";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID = "Students_Wifi";
+const char* WIFI_PASSWORD = "students@789";
 
 // MQTT broker
-const char* MQTT_BROKER = "192.168.1.100";  // Replace with your PC's LAN IP
+const char* MQTT_BROKER = "10.10.24.24";  // Replace with your PC's LAN IP
 const int MQTT_PORT = 1883;
 const char* MQTT_CLIENT_ID = "iotclaw_esp32_dual_led";
 
@@ -60,24 +60,41 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
 }
 
 void connectWifi() {
+  Serial.println();
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(WIFI_SSID);
+  
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   while (WiFi.status() != WL_CONNECTED) {
     digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
     delay(300);
+    Serial.print(".");
   }
 
+  Serial.println();
+  Serial.println("WiFi connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
   digitalWrite(STATUS_LED_PIN, HIGH);
 }
 
 void reconnectMqtt() {
   while (!mqttClient.connected()) {
+    Serial.print("Connecting to Mosquitto MQTT at ");
+    Serial.print(MQTT_BROKER);
+    Serial.println("...");
+    
     if (mqttClient.connect(MQTT_CLIENT_ID)) {
+      Serial.println("MQTT connected successfully!");
       mqttClient.subscribe(LED1_SET_TOPIC, 1);
       mqttClient.subscribe(LED2_SET_TOPIC, 1);
       publishCurrentStates();
     } else {
+      Serial.print("MQTT connection failed, state: ");
+      Serial.println(mqttClient.state());
+      Serial.println("Retrying in 2 seconds...");
       digitalWrite(STATUS_LED_PIN, LOW);
       delay(2000);
       digitalWrite(STATUS_LED_PIN, HIGH);
