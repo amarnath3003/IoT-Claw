@@ -49,7 +49,7 @@ class Storage:
     def add_log(self, level: str, source: str, message: str, detail: dict = None) -> dict:
         entry = {
             "id": str(uuid.uuid4())[:8],
-            "ts": datetime.utcnow().isoformat(),
+            "ts": datetime.now().isoformat(),
             "level": level,       # info | success | warning | error
             "source": source,     # ai | mqtt | engine | api | user
             "message": message,
@@ -84,7 +84,7 @@ class Storage:
                 "description": device.get("description", ""),
                 "brightness": None,
                 "last_updated": None,
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now().isoformat()
             }
             for key, value in device.items():
                 if key not in {"name", "topic_base", "type", "status", "unit", "location", "description"}:
@@ -107,7 +107,7 @@ class Storage:
                     "description": device.get("description", ""),
                     "brightness": None,
                     "last_updated": None,
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": datetime.now().isoformat()
                 }
                 for key, value in device.items():
                     if key not in {"name", "topic_base", "type", "status", "unit", "location", "description"}:
@@ -120,7 +120,7 @@ class Storage:
                 if key in device:
                     existing[key] = device[key]
             existing.setdefault("status", device.get("status", "unknown"))
-            existing.setdefault("created_at", datetime.utcnow().isoformat())
+            existing.setdefault("created_at", datetime.now().isoformat())
             existing.setdefault("last_updated", None)
             self._save()
             return dict(existing)
@@ -139,7 +139,7 @@ class Storage:
                 expected_topic = data["topic_base"] + "/state"
                 if topic == expected_topic:
                     self._data["devices"][name]["status"] = value
-                    self._data["devices"][name]["last_updated"] = datetime.utcnow().isoformat()
+                    self._data["devices"][name]["last_updated"] = datetime.now().isoformat()
                     self._save()
                     return name
         return None
@@ -148,7 +148,7 @@ class Storage:
         with self._lock:
             if device_name in self._data["devices"]:
                 self._data["devices"][device_name][field] = value
-                self._data["devices"][device_name]["last_updated"] = datetime.utcnow().isoformat()
+                self._data["devices"][device_name]["last_updated"] = datetime.now().isoformat()
                 self._save()
 
     # ── Workflow methods ──
@@ -160,7 +160,7 @@ class Storage:
     def save_workflow(self, workflow: dict) -> dict:
         with self._lock:
             workflow["id"] = str(uuid.uuid4())
-            workflow["created_at"] = datetime.utcnow().isoformat()
+            workflow["created_at"] = datetime.now().isoformat()
             workflow.setdefault("enabled", True)
             workflow.setdefault("run_count", 0)
             workflow.setdefault("last_run", None)
@@ -189,6 +189,6 @@ class Storage:
             for w in self._data["workflows"]:
                 if w.get("id") == workflow_id:
                     w["run_count"] = w.get("run_count", 0) + 1
-                    w["last_run"] = datetime.utcnow().isoformat()
+                    w["last_run"] = datetime.now().isoformat()
                     self._save()
                     break

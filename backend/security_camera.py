@@ -182,7 +182,7 @@ class SecurityCameraSimulator:
             cv2.rectangle(annotated, (x, y), (x + w, y + h), color, 2)
             cv2.putText(annotated, item["type"], (x, max(y - 8, 12)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-        filename = f"security_camera_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.jpg"
+        filename = f"security_camera_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
         path = self.capture_dir / filename
         cv2.imwrite(str(path), annotated)
         return str(path)
@@ -194,7 +194,7 @@ class SecurityCameraSimulator:
             "detected": detected_types,
             "count": len(detections),
             "snapshot": snapshot,
-            "time_utc": datetime.utcnow().isoformat(),
+            "time_utc": datetime.now().isoformat(),
         }
         self.storage.update_device_field(self.device_name, "last_detection", detail)
         self.storage.update_device_field(self.device_name, "last_snapshot", snapshot)
