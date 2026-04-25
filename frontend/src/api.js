@@ -1,7 +1,9 @@
 import axios from 'axios'
 
+export const API_BASE = 'http://127.0.0.1:8000'
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -19,6 +21,9 @@ export const deleteDevice = (name) =>
 
 export const commandDevice = (name, command) =>
   api.post(`/devices/${encodeURIComponent(name)}/command`, { command })
+
+export const getDevicePreviewUrl = (name, cacheBuster = Date.now()) =>
+  `${API_BASE}/devices/${encodeURIComponent(name)}/preview?t=${cacheBuster}`
 
 export const getLogs = (limit = 100) =>
   api.get('/logs', { params: { limit } })

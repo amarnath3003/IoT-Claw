@@ -28,6 +28,8 @@ class SecurityCameraSimulator:
         self._stop_event = threading.Event()
         self._last_alert_at = 0.0
         self._telegram_warned = False
+        self._frame_lock = threading.Lock()
+        self._latest_preview = None
 
     def bind_loop(self, loop):
         self._loop = loop
@@ -75,10 +77,15 @@ class SecurityCameraSimulator:
         if self._thread:
             self._thread.join(timeout=3)
         self._thread = None
+        self._clear_preview()
         self.storage.update_device_field(self.device_name, "status", "OFF")
         self.storage.add_log("info", "camera", "Laptop security camera stopped", {"device": self.device_name})
         self._broadcast_state()
         return {"status": "stopped", "device": self.device_name}
+
+    def get_latest_preview(self):
+        with self._frame_lock:
+            return self._latest_preview
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -87,6 +94,7 @@ class SecurityCameraSimulator:
         try:
             import cv2
         except Exception as exc:
+            self._clear_preview()
             self.storage.update_device_field(self.device_name, "status", "ERROR")
             self.storage.add_log(
                 "error",
@@ -99,6 +107,7 @@ class SecurityCameraSimulator:
 
         capture = self._open_capture(cv2)
         if not capture or not capture.isOpened():
+            self._clear_preview()
             self.storage.update_device_field(self.device_name, "status", "ERROR")
             self.storage.add_log(
                 "error",
@@ -119,6 +128,7 @@ class SecurityCameraSimulator:
                     time.sleep(self.poll_interval)
                     continue
 
+                self._update_preview(cv2, frame)
                 detections = self._detect(cv2, frame, face_detector, body_detector)
                 if detections and self._cooldown_elapsed():
                     self._last_alert_at = time.time()
@@ -129,6 +139,19 @@ class SecurityCameraSimulator:
                 time.sleep(self.poll_interval)
         finally:
             capture.release()
+            if self._stop_event.is_set():
+                self._clear_preview()
+
+    def _update_preview(self, cv2, frame):
+        ok, jpeg = cv2.imencode(".jpg", frame)
+        if not ok:
+            return
+        with self._frame_lock:
+            self._latest_preview = jpeg.tobytes()
+
+    def _clear_preview(self):
+        with self._frame_lock:
+            self._latest_preview = None
 
     def _open_capture(self, cv2):
         if os.name == "nt":

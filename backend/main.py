@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
@@ -65,9 +65,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan, title="iotClaw API")
 
+frontend_origins_env = os.getenv("FRONTEND_ORIGINS", "")
+frontend_origins = [o.strip() for o in frontend_origins_env.split(",") if o.strip()]
+if not frontend_origins:
+    frontend_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=frontend_origins,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -128,6 +139,24 @@ async def command_device(name: str, body: dict):
         raise HTTPException(status_code=400, detail=result["error"])
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return {"status": "sent", "device": name, "command": command, "result": result}
+
+
+@app.get("/devices/{name}/preview")
+async def device_preview(name: str):
+    """Return latest camera preview frame as JPEG."""
+    device = storage.get_all_devices().get(name)
+    if not device:
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    if device.get("type") != "security_camera" or name != camera_service.device_name:
+        raise HTTPException(status_code=400, detail="Preview is only available for security camera devices")
+    if str(device.get("status", "")).upper() != "ON":
+        raise HTTPException(status_code=409, detail="Camera is OFF")
+
+    frame = camera_service.get_latest_preview()
+    if not frame:
+        raise HTTPException(status_code=404, detail="Camera preview not ready")
+
+    return Response(content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store, no-cache"})
 
 
 @app.get("/logs")

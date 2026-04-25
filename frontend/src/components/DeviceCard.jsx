@@ -1,8 +1,10 @@
-import { useState } from 'react'
-import { commandDevice } from '../api'
+import { useEffect, useMemo, useState } from 'react'
+import { commandDevice, getDevicePreviewUrl } from '../api'
 
 export default function DeviceCard({ name, data }) {
   const [toggling, setToggling] = useState(false)
+  const [previewTick, setPreviewTick] = useState(Date.now())
+  const [previewError, setPreviewError] = useState(false)
 
   const statusStr = String(data.status ?? '').toUpperCase()
   const isOn = statusStr === 'ON'
@@ -36,6 +38,23 @@ export default function DeviceCard({ name, data }) {
   const lastDetectionTime = data.last_detection?.time_utc
     ? new Date(data.last_detection.time_utc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null
+
+  const showCameraPreview = data.type === 'security_camera' && isOn
+
+  useEffect(() => {
+    if (!showCameraPreview) {
+      setPreviewError(false)
+      return
+    }
+    setPreviewError(false)
+    setPreviewTick(Date.now())
+    const timer = setInterval(() => {
+      setPreviewTick(Date.now())
+    }, 700)
+    return () => clearInterval(timer)
+  }, [showCameraPreview])
+
+  const previewUrl = useMemo(() => getDevicePreviewUrl(name, previewTick), [name, previewTick])
 
   return (
     <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 flex flex-col gap-3 hover:border-gray-600 transition-colors">
@@ -81,11 +100,24 @@ export default function DeviceCard({ name, data }) {
       </div>
 
       {data.type === 'security_camera' && (
-        <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+        <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 space-y-2">
+          {showCameraPreview && !previewError && (
+            <img
+              src={previewUrl}
+              alt={`${deviceLabel} live preview`}
+              className="w-full aspect-video object-cover rounded border border-amber-700/50 bg-black"
+              onError={() => setPreviewError(true)}
+            />
+          )}
+
+          {showCameraPreview && previewError && (
+            <p className="text-amber-300">Preview is warming up. Keep the camera ON for a moment.</p>
+          )}
+
           {lastDetectionTime ? (
-            <>Last detection: {data.last_detection.detected?.join(', ') || 'movement'} at {lastDetectionTime}</>
+            <p>Last detection: {data.last_detection.detected?.join(', ') || 'movement'} at {lastDetectionTime}</p>
           ) : (
-            <>CV monitor is ready. Turn it on to scan for faces or bodies.</>
+            <p>CV monitor is ready. Turn it on to scan for faces or bodies.</p>
           )}
         </div>
       )}

@@ -136,7 +136,10 @@ Multiple actions can be chained in one workflow.""",
                             "device": {"type": "string", "description": "Device name (sensor triggers only)"},
                             "operator": {"type": "string", "enum": [">", "<", ">=", "<=", "==", "!="],
                                          "description": "Comparison operator (sensor triggers only)"},
-                            "value": {"description": "Threshold value (sensor triggers only)"},
+                            "value": {
+                                "type": "string",
+                                "description": "Threshold value for sensor triggers (number or text, e.g. 30 or ON)"
+                            },
                             "code": {"type": "string", "description": "Secret phrase to type in chat (chat triggers)"},
                             "time": {"type": "string", "description": "Time in HH:MM format (schedule triggers)"}
                         },

@@ -23,7 +23,7 @@ const TABS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState('Dashboard')
   const [chatMessages, setChatMessages] = useState([INITIAL_MESSAGE])
-  const { deviceStates, isConnected } = useWebSocket('ws://localhost:8000/ws')
+  const { deviceStates, isConnected } = useWebSocket('ws://127.0.0.1:8000/ws')
   const deviceCount = Object.keys(deviceStates).length
 
   return (

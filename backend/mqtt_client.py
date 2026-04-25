@@ -6,6 +6,7 @@ class MQTTClient:
     def __init__(self, storage, ws_broadcast_fn):
         self.storage = storage
         self.ws_broadcast_fn = ws_broadcast_fn  # async function
+
         self.client = mqtt_lib.Client(client_id="iotclaw_backend")
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
@@ -15,7 +16,7 @@ class MQTTClient:
     def connect(self, host="localhost", port=1883):
         self._loop = asyncio.get_event_loop()
         try:
-            self.client.connect(host, port, keepalive=60)
+            self.client.connect_async(host, port, keepalive=60)
             # Run paho's network loop in a daemon thread
             self.client.loop_start()
         except Exception as e:
