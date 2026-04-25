@@ -1,5 +1,9 @@
+import asyncio
 import json
 import os
+import threading
+import time
+
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
@@ -9,33 +13,59 @@ _api_key = os.getenv("OPENAI_API_KEY")
 _api_key_missing = not _api_key or _api_key.startswith("sk-proj-REPLACE")
 client = None if _api_key_missing else AsyncOpenAI(api_key=_api_key)
 
-SYSTEM_PROMPT = """You are iotClaw, an intelligent IoT automation assistant.
-You control physical smart home devices through MQTT and manage automations.
+SYSTEM_PROMPT = """You are iotClaw — a highly intelligent IoT automation assistant controlling real physical devices.
 
-RULES:
-- When the user asks to control a device (turn on/off, set brightness), ALWAYS call the tool — never just describe it.
-- When registering, deleting, or reading a device, ALWAYS call the tool.
-- When creating a workflow/automation, use create_workflow. Workflows can be triggered by:
-  * sensor: a device value crossing a threshold (e.g. temp > 30)
-  * chat: a secret code the user types in chat (e.g. "activate night mode")
-  * schedule: a daily time (e.g. "every day at 07:30")
-- Workflows can have multiple chained actions.
-- The laptop webcam is auto-registered as laptop_security_camera. For security camera monitoring, create a schedule/chat/sensor workflow with a camera_monitor action set to ON.
-- When the user asks to run an existing workflow now, use execute_workflow.
-- Always confirm what you did after tool execution. Be concise and friendly.
-- If the user mentions a device by a casual name (e.g. "the light"), infer the closest registered device name.
-- If a device is not found, list the known devices and ask the user to clarify."""
+═══ CORE INTELLIGENCE RULES ═══
+1. ALWAYS infer intent from natural language. Never ask unnecessary questions if you can reason from context.
+2. For EVERY action request, call the appropriate tool. Never just describe what you WOULD do.
+3. If a device name is ambiguous, use list_devices first, then pick the closest match by name/location.
+4. Chain multiple tool calls in one response when the user's intent requires it.
+5. Use blink_device for "blink", "flash", "pulse", "signal" commands.
+6. Use sequence_actions for multi-step patterns like "turn on, wait 5 seconds, turn off".
+7. After all tool calls, give a concise confirmation. Never just say "I'll do that" without calling a tool.
+
+═══ INTENT EXAMPLES ═══
+- "turn on the light" → control_device(nearest light device, ON)
+- "blink the LED 5 times" → blink_device(led_device, times=5, on_seconds=0.5, off_seconds=0.5)
+- "flash red light twice slowly" → blink_device(red_led, times=2, on_seconds=1.5, off_seconds=1.0)
+- "turn on the fan then off after 10 seconds" → sequence_actions([{ON}, {delay:10}, {OFF}])
+- "what devices do I have?" → list_devices()
+- "read temp sensor" → read_sensor(temperature_device)
+- "make a workflow: if temp > 30 turn on fan" → create_workflow(sensor trigger, device action)
+- "good night" → infer night mode: turn off all devices or activate a night mode workflow
+- "morning routine" → trigger any schedule/chat workflow named morning, or turn on relevant devices
+- "status of everything" → list_devices() then summarize clearly
+- "dim the lights to 40%" → set_device_brightness(light, 40)
+- "is the light on?" → read_sensor(light_device), report status conversationally
+- "schedule fan to turn on at 8am" → create_workflow(schedule trigger 08:00, device ON)
+
+═══ DEVICE MATCHING ═══
+- "the light" / "light" / "LED" → match any switch/dimmable_switch device
+- "the fan" → match device with "fan" in name
+- "cam" / "camera" / "eye" → laptop_security_camera
+- If multiple matches, pick the one in context (e.g. "living room light" → living_room_*)
+- Never fail if you can make a reasonable inference
+
+═══ WORKFLOW INTELLIGENCE ═══
+- Trigger types: sensor (threshold), chat (secret phrase), schedule (daily HH:MM)
+- Always set a meaningful cooldown_seconds based on the use case
+- For "blink when motion detected" → sensor trigger on camera device + blink action using sequence
+- For "alert me at 9pm" → schedule trigger + log action
+
+═══ TONE ═══
+Be concise, friendly, and confident. Confirm what you did in 1-2 sentences. Use emojis sparingly for warmth."""
+
 
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "control_device",
-            "description": "Turn a device ON or OFF via MQTT. Use whenever user says turn on/off/toggle a device.",
+            "description": "Turn a device ON or OFF. Use for any on/off/toggle request.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "device_name": {"type": "string", "description": "Exact registered device name (snake_case)"},
+                    "device_name": {"type": "string", "description": "Registered device name (snake_case)"},
                     "action": {"type": "string", "enum": ["ON", "OFF"]}
                 },
                 "required": ["device_name", "action"]
@@ -45,8 +75,52 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "blink_device",
+            "description": "Blink/flash/pulse a device ON and OFF repeatedly. Use for 'blink', 'flash', 'signal', 'strobe', 'pulse' commands.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string", "description": "Device to blink"},
+                    "times": {"type": "integer", "description": "Number of blink cycles (default 3)", "default": 3},
+                    "on_seconds": {"type": "number", "description": "Seconds ON per cycle (default 0.5)", "default": 0.5},
+                    "off_seconds": {"type": "number", "description": "Seconds OFF per cycle (default 0.5)", "default": 0.5}
+                },
+                "required": ["device_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sequence_actions",
+            "description": "Execute a timed sequence of device actions with delays between them. Use for 'turn on then off after X seconds', 'on for 5 seconds', 'wait then turn off', etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "steps": {
+                        "type": "array",
+                        "description": "List of steps to execute in order",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string", "enum": ["device", "delay"], "description": "'device' to control a device, 'delay' to wait"},
+                                "device_name": {"type": "string", "description": "Device name (for device steps)"},
+                                "action": {"type": "string", "enum": ["ON", "OFF"], "description": "Action (for device steps)"},
+                                "seconds": {"type": "number", "description": "Seconds to wait (for delay steps)"}
+                            }
+                        }
+                    },
+                    "description": {"type": "string", "description": "Human-readable summary of this sequence"}
+                },
+                "required": ["steps"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "set_device_brightness",
-            "description": "Set brightness/level of a dimmable device (0-100).",
+            "description": "Set brightness/level of a dimmable device (0-100). Use for 'dim', 'brighten', 'set level', '50%' etc.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -75,7 +149,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_devices",
-            "description": "List all registered devices and their current states.",
+            "description": "List all registered devices and their current states. Use when user asks what devices exist, or to resolve an ambiguous device name.",
             "parameters": {"type": "object", "properties": {}}
         }
     },
@@ -102,11 +176,11 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "delete_device",
-            "description": "Remove a device from the system. Use when user asks to delete, remove, or unregister a device.",
+            "description": "Remove a device from the system.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "device_name": {"type": "string", "description": "Exact name of the device to delete"}
+                    "device_name": {"type": "string"}
                 },
                 "required": ["device_name"]
             }
@@ -116,55 +190,44 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_workflow",
-            "description": """Create an automation workflow. Supports three trigger types:
-1. sensor: fires when a device value meets a condition (e.g. temp > 30)
-2. chat: fires when the user types a secret code/phrase in the chat
-3. schedule: fires every day at a specific time (HH:MM format)
-Actions can be: device control, brightness setting, camera monitoring, or log message.
-Multiple actions can be chained in one workflow.""",
+            "description": """Create an automation workflow. Trigger types:
+1. sensor: fires when device value meets condition (e.g. temp > 30)
+2. chat: fires when user types a secret phrase
+3. schedule: fires every day at HH:MM
+Actions: device (ON/OFF), brightness, camera_monitor, log.""",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Short workflow name"},
-                    "description": {"type": "string", "description": "What this workflow does"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
                     "trigger": {
                         "type": "object",
-                        "description": "Trigger configuration",
                         "properties": {
-                            "type": {"type": "string", "enum": ["sensor", "chat", "schedule"],
-                                     "description": "sensor=threshold, chat=secret code, schedule=daily time"},
-                            "device": {"type": "string", "description": "Device name (sensor triggers only)"},
-                            "operator": {"type": "string", "enum": [">", "<", ">=", "<=", "==", "!="],
-                                         "description": "Comparison operator (sensor triggers only)"},
-                            "value": {
-                                "type": "string",
-                                "description": "Threshold value for sensor triggers (number or text, e.g. 30 or ON)"
-                            },
-                            "code": {"type": "string", "description": "Secret phrase to type in chat (chat triggers)"},
-                            "time": {"type": "string", "description": "Time in HH:MM format (schedule triggers)"}
+                            "type": {"type": "string", "enum": ["sensor", "chat", "schedule"]},
+                            "device": {"type": "string"},
+                            "operator": {"type": "string", "enum": [">", "<", ">=", "<=", "==", "!="]},
+                            "value": {"type": "string"},
+                            "code": {"type": "string"},
+                            "time": {"type": "string", "description": "HH:MM"}
                         },
                         "required": ["type"]
                     },
                     "actions": {
                         "type": "array",
-                        "description": "List of actions to perform when triggered",
                         "items": {
                             "type": "object",
                             "properties": {
                                 "type": {"type": "string", "enum": ["device", "brightness", "camera_monitor", "log"]},
-                                "device": {"type": "string", "description": "Device to control"},
-                                "command": {"type": "string", "enum": ["ON", "OFF"], "description": "For device type"},
-                                "level": {"type": "integer", "description": "For brightness type (0-100)"},
-                                "message": {"type": "string", "description": "For log type"}
+                                "device": {"type": "string"},
+                                "command": {"type": "string", "enum": ["ON", "OFF"]},
+                                "level": {"type": "integer"},
+                                "message": {"type": "string"}
                             },
                             "required": ["type"]
                         }
                     },
-                    "cooldown_seconds": {
-                        "type": "integer",
-                        "description": "Seconds before this workflow can trigger again (default 60)"
-                    },
-                    "enabled": {"type": "boolean", "description": "Whether workflow is active (default true)"}
+                    "cooldown_seconds": {"type": "integer", "description": "Default 60"},
+                    "enabled": {"type": "boolean"}
                 },
                 "required": ["name", "trigger", "actions"]
             }
@@ -182,11 +245,11 @@ Multiple actions can be chained in one workflow.""",
         "type": "function",
         "function": {
             "name": "toggle_workflow",
-            "description": "Enable or disable a workflow by its ID or name.",
+            "description": "Enable or disable a workflow by ID or name.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "workflow_id": {"type": "string", "description": "The workflow ID to toggle"}
+                    "workflow_id": {"type": "string"}
                 },
                 "required": ["workflow_id"]
             }
@@ -210,11 +273,11 @@ Multiple actions can be chained in one workflow.""",
         "type": "function",
         "function": {
             "name": "execute_workflow",
-            "description": "Run a saved workflow immediately by ID or exact workflow name.",
+            "description": "Run a saved workflow immediately by ID or exact name.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "workflow_id": {"type": "string", "description": "Workflow ID or exact workflow name"}
+                    "workflow_id": {"type": "string"}
                 },
                 "required": ["workflow_id"]
             }
@@ -228,7 +291,7 @@ Multiple actions can be chained in one workflow.""",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "limit": {"type": "integer", "description": "Number of recent logs to return (default 20)"}
+                    "limit": {"type": "integer", "description": "Number of logs to return (default 20)"}
                 }
             }
         }
@@ -236,48 +299,126 @@ Multiple actions can be chained in one workflow.""",
 ]
 
 
+def _fuzzy_match(name: str, devices: dict) -> str | None:
+    """Return best matching device name or None."""
+    if name in devices:
+        return name
+    name_l = name.lower().replace(" ", "_")
+    # Exact key match ignoring case
+    for k in devices:
+        if k.lower() == name_l:
+            return k
+    # Substring match
+    candidates = [k for k in devices if name_l in k.lower() or k.lower() in name_l]
+    if len(candidates) == 1:
+        return candidates[0]
+    # Word overlap
+    words = set(name_l.replace("_", " ").split())
+    scored = []
+    for k in devices:
+        k_words = set(k.lower().replace("_", " ").split())
+        overlap = len(words & k_words)
+        if overlap:
+            scored.append((overlap, k))
+    if scored:
+        return max(scored, key=lambda x: x[0])[1]
+    return None
+
+
 def build_tool_dispatch(mqtt, storage, engine=None):
 
-    def control_device(device_name: str, action: str) -> dict:
+    def _resolve(device_name: str) -> tuple[str | None, dict]:
         devices = storage.get_all_devices()
-        if device_name not in devices:
-            # Fuzzy match attempt
-            close = [d for d in devices if device_name.lower() in d.lower() or d.lower() in device_name.lower()]
-            if len(close) == 1:
-                device_name = close[0]
-            else:
-                return {"error": f"Device '{device_name}' not found.", "known_devices": list(devices.keys())}
+        matched = _fuzzy_match(device_name, devices)
+        return matched, devices
+
+    def control_device(device_name: str, action: str) -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
+            return {"error": f"Device '{device_name}' not found.", "known_devices": list(devices.keys())}
         if engine:
-            result = engine.execute_device_action(device_name, action, source="ai")
+            result = engine.execute_device_action(matched, action, source="ai")
             if result.get("error"):
                 return result
-            return {"status": "success", "device": device_name, "action": action, "result": result}
-        topic = devices[device_name]["topic_base"] + "/set"
+            return {"status": "success", "device": matched, "action": action}
+        topic = devices[matched]["topic_base"] + "/set"
         success = mqtt.publish(topic, action)
         if success:
-            storage.update_device_field(device_name, "status", action)
-            storage.add_log("success", "ai", f"AI turned {action} → {device_name}", {"device": device_name, "action": action})
-            return {"status": "success", "device": device_name, "action": action}
+            storage.update_device_field(matched, "status", action)
+            storage.add_log("success", "ai", f"AI turned {action} → {matched}", {"device": matched, "action": action})
+            return {"status": "success", "device": matched, "action": action}
         return {"error": f"MQTT publish failed for {topic}"}
 
-    def set_device_brightness(device_name: str, level: int) -> dict:
+    def blink_device(device_name: str, times: int = 3, on_seconds: float = 0.5, off_seconds: float = 0.5) -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
+            return {"error": f"Device '{device_name}' not found.", "known_devices": list(devices.keys())}
+
+        def _blink():
+            for i in range(times):
+                _do_control(matched, "ON", devices)
+                time.sleep(on_seconds)
+                _do_control(matched, "OFF", devices)
+                if i < times - 1:
+                    time.sleep(off_seconds)
+            storage.add_log("success", "ai", f"AI blinked {matched} × {times}", {"device": matched, "times": times})
+
+        threading.Thread(target=_blink, daemon=True).start()
+        return {"status": "blinking", "device": matched, "times": times, "on_s": on_seconds, "off_s": off_seconds}
+
+    def _do_control(device_name: str, action: str, devices: dict):
+        if engine:
+            engine.execute_device_action(device_name, action, source="ai")
+        else:
+            topic = devices[device_name]["topic_base"] + "/set"
+            if mqtt.publish(topic, action):
+                storage.update_device_field(device_name, "status", action)
+
+    def sequence_actions(steps: list, description: str = "") -> dict:
+        """Execute a timed sequence of device steps with optional delays."""
         devices = storage.get_all_devices()
-        if device_name not in devices:
+
+        def _run():
+            executed = []
+            for step in steps:
+                step_type = step.get("type", "device")
+                if step_type == "delay":
+                    secs = float(step.get("seconds", 1))
+                    time.sleep(secs)
+                    executed.append({"waited": secs})
+                elif step_type == "device":
+                    dev = step.get("device_name") or step.get("device")
+                    act = str(step.get("action", "ON")).upper()
+                    matched = _fuzzy_match(dev, devices) if dev else None
+                    if matched:
+                        _do_control(matched, act, devices)
+                        executed.append({"device": matched, "action": act})
+                    else:
+                        executed.append({"error": f"Device '{dev}' not found"})
+            if description:
+                storage.add_log("success", "ai", f"Sequence: {description}", {"steps": len(steps)})
+
+        threading.Thread(target=_run, daemon=True).start()
+        return {"status": "sequence_started", "steps": len(steps), "description": description or "Custom sequence"}
+
+    def set_device_brightness(device_name: str, level: int) -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
             return {"error": f"Device '{device_name}' not found."}
-        topic = devices[device_name]["topic_base"] + "/brightness/set"
+        topic = devices[matched]["topic_base"] + "/brightness/set"
         success = mqtt.publish(topic, str(level))
         if success:
-            storage.update_device_field(device_name, "brightness", level)
-            storage.add_log("success", "ai", f"AI set brightness {device_name} → {level}%", {"device": device_name, "level": level})
-            return {"status": "success", "device": device_name, "brightness": level}
+            storage.update_device_field(matched, "brightness", level)
+            storage.add_log("success", "ai", f"AI set brightness {matched} → {level}%", {"device": matched, "level": level})
+            return {"status": "success", "device": matched, "brightness": level}
         return {"error": "MQTT publish failed"}
 
     def read_sensor(device_name: str) -> dict:
-        devices = storage.get_all_devices()
-        if device_name not in devices:
+        matched, devices = _resolve(device_name)
+        if not matched:
             return {"error": f"Device '{device_name}' not found."}
-        d = devices[device_name]
-        return {"device": device_name, "value": d.get("status", "unknown"),
+        d = devices[matched]
+        return {"device": matched, "value": d.get("status", "unknown"),
                 "unit": d.get("unit", ""), "last_updated": d.get("last_updated", "never")}
 
     def list_devices() -> dict:
@@ -291,27 +432,22 @@ def build_tool_dispatch(mqtt, storage, engine=None):
                   "unit": unit, "location": location, "description": description}
         storage.register_device(device)
         mqtt.subscribe(topic_base + "/state")
-        storage.add_log("success", "ai", f"AI registered device: {name}", {"device": name, "type": type, "topic": topic_base})
+        storage.add_log("success", "ai", f"AI registered device: {name}", {"device": name, "type": type})
         return {"status": "registered", "device": name}
 
     def delete_device_fn(device_name: str) -> dict:
-        ok = storage.delete_device(device_name)
-        if ok:
-            storage.add_log("warning", "ai", f"AI deleted device: {device_name}", {"device": device_name})
-            return {"status": "deleted", "device": device_name}
-        return {"error": f"Device '{device_name}' not found."}
+        matched, _ = _resolve(device_name)
+        if not matched:
+            return {"error": f"Device '{device_name}' not found."}
+        storage.delete_device(matched)
+        storage.add_log("warning", "ai", f"AI deleted device: {matched}", {"device": matched})
+        return {"status": "deleted", "device": matched}
 
     def create_workflow_fn(name: str, trigger: dict, actions: list,
                            description: str = "", cooldown_seconds: int = 60,
                            enabled: bool = True) -> dict:
-        workflow = {
-            "name": name,
-            "description": description,
-            "trigger": trigger,
-            "actions": actions,
-            "cooldown_seconds": cooldown_seconds,
-            "enabled": enabled
-        }
+        workflow = {"name": name, "description": description, "trigger": trigger,
+                    "actions": actions, "cooldown_seconds": cooldown_seconds, "enabled": enabled}
         saved = storage.save_workflow(workflow)
         if engine:
             engine._rebuild_chat_triggers()
@@ -323,6 +459,12 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         return {"workflows": wfs, "count": len(wfs)}
 
     def toggle_workflow_fn(workflow_id: str) -> dict:
+        # Try match by name if ID not found
+        wfs = storage.get_workflows()
+        if not any(w["id"] == workflow_id for w in wfs):
+            match = next((w for w in wfs if w.get("name", "").lower() == workflow_id.lower()), None)
+            if match:
+                workflow_id = match["id"]
         result = storage.toggle_workflow(workflow_id)
         if result:
             state = "enabled" if result["enabled"] else "disabled"
@@ -358,6 +500,8 @@ def build_tool_dispatch(mqtt, storage, engine=None):
 
     return {
         "control_device": control_device,
+        "blink_device": blink_device,
+        "sequence_actions": sequence_actions,
         "set_device_brightness": set_device_brightness,
         "read_sensor": read_sensor,
         "list_devices": list_devices,
@@ -373,10 +517,10 @@ def build_tool_dispatch(mqtt, storage, engine=None):
 
 
 async def run_chat(user_message: str, history: list, mqtt, storage, engine=None) -> dict:
-    """Returns dict with reply and tool_calls list for frontend logging."""
+    """Agentic loop: keep calling tools until the model returns a final text reply."""
     dispatch = build_tool_dispatch(mqtt, storage, engine)
 
-    # Check chat-triggers before calling OpenAI
+    # Check chat-triggers before OpenAI
     fired = []
     if engine:
         fired = engine.check_chat_trigger(user_message)
@@ -385,68 +529,70 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
             storage.add_log("success", "engine", f"Chat trigger fired: {names}", {"message": user_message})
 
     if client is None:
-        storage.add_log("warning", "ai", "AI chat is disabled because OPENAI_API_KEY is not configured")
+        storage.add_log("warning", "ai", "AI chat disabled — OPENAI_API_KEY not configured")
         if fired:
             names = ", ".join(f["workflow"] for f in fired)
-            return {"reply": f"Triggered workflow: {names}. AI chat is disabled until OPENAI_API_KEY is configured.", "tool_calls": []}
-        return {
-            "reply": "AI chat is disabled. Set OPENAI_API_KEY in backend/.env to enable natural-language control.",
-            "tool_calls": [],
-        }
+            return {"reply": f"Triggered workflow: {names}. Set OPENAI_API_KEY to enable full AI chat.", "tool_calls": []}
+        return {"reply": "AI chat is disabled. Set OPENAI_API_KEY in backend/.env to enable natural-language control.", "tool_calls": []}
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
     tool_calls_log = []
+    MAX_ROUNDS = 8  # prevent infinite loops
 
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            max_tokens=1024,
-        )
-
-        choice = response.choices[0]
-
-        if choice.finish_reason == "stop":
-            storage.add_log("info", "ai", f"User: {user_message[:80]}")
-            return {"reply": choice.message.content, "tool_calls": []}
-
-        if choice.finish_reason == "tool_calls":
-            assistant_message = choice.message
-            messages.append(assistant_message)
-
-            for tc in assistant_message.tool_calls:
-                tool_name = tc.function.name
-                tool_args = json.loads(tc.function.arguments)
-                print(f"[AI] Tool: {tool_name} args={tool_args}")
-
-                if tool_name in dispatch:
-                    result = dispatch[tool_name](**tool_args)
-                else:
-                    result = {"error": f"Unknown tool: {tool_name}"}
-
-                tool_calls_log.append({"tool": tool_name, "args": tool_args, "result": result})
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps(result)
-                })
-
-            final = await client.chat.completions.create(
+        for _ in range(MAX_ROUNDS):
+            response = await client.chat.completions.create(
                 model="gpt-4o",
                 messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
                 max_tokens=1024,
             )
-            reply = final.choices[0].message.content
-            storage.add_log("info", "ai", f"User: {user_message[:80]} → {len(tool_calls_log)} tool(s) called")
-            return {"reply": reply, "tool_calls": tool_calls_log}
 
-        return {"reply": "I encountered an unexpected response format.", "tool_calls": []}
+            choice = response.choices[0]
+
+            # Model gave a text reply — done
+            if choice.finish_reason == "stop":
+                storage.add_log("info", "ai", f"User: {user_message[:80]} → {len(tool_calls_log)} tool(s)")
+                return {"reply": choice.message.content, "tool_calls": tool_calls_log}
+
+            # Model wants to call tools
+            if choice.finish_reason == "tool_calls":
+                assistant_message = choice.message
+                messages.append(assistant_message)
+
+                for tc in assistant_message.tool_calls:
+                    tool_name = tc.function.name
+                    try:
+                        tool_args = json.loads(tc.function.arguments)
+                    except json.JSONDecodeError:
+                        tool_args = {}
+
+                    print(f"[AI] Tool: {tool_name} args={tool_args}")
+
+                    if tool_name in dispatch:
+                        result = dispatch[tool_name](**tool_args)
+                    else:
+                        result = {"error": f"Unknown tool: {tool_name}"}
+
+                    tool_calls_log.append({"tool": tool_name, "args": tool_args, "result": result})
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(result)
+                    })
+
+                # Continue the loop — let the model decide if more tools are needed
+                continue
+
+            # Unexpected finish reason
+            break
+
+        return {"reply": "I ran into an issue processing your request.", "tool_calls": tool_calls_log}
 
     except Exception as e:
         etype = type(e).__name__
