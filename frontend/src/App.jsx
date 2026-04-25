@@ -27,62 +27,62 @@ export default function App() {
   const deviceCount = Object.keys(deviceStates).length
 
   return (
-    <div style={{ height: '100vh', background: 'var(--bg-dark)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100vh', background: 'var(--bg-base)', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── HEADER ── */}
       <header style={{
         background: 'var(--bg-card)',
-        boxShadow: '0 4px 24px #0d0f11, 0 1px 0 rgba(255,255,255,0.04)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
         padding: '0 32px',
-        height: 80,
+        height: 72,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         position: 'sticky',
         top: 0,
         zIndex: 100,
+        flexShrink: 0,
       }}>
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{
-            width: 56,
-            height: 56,
-            borderRadius: 14,
+            width: 44,
+            height: 44,
+            borderRadius: 12,
             background: '#000',
-            boxShadow: 'var(--sh-flat)',
+            border: '1px solid rgba(255,255,255,0.1)',
             overflow: 'hidden',
             flexShrink: 0,
           }}>
-            <img
-              src="/logo.jpg"
-              alt="iotClaw logo"
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-            />
+            <img src="/logo.jpg" alt="iotClaw logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
-
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)', textShadow: 'var(--glow-sm)', letterSpacing: 1.5 }}>
-              iotClaw
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: 0.5, lineHeight: 1.1 }}>
+              iot<span style={{ color: 'var(--accent)' }}>Claw</span>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', lineHeight: 1.2, marginTop: 2 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: '0.06em', marginTop: 1 }}>
               AI-Powered Automation
             </div>
           </div>
         </div>
 
-        {/* Status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Status pill */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '7px 14px',
+          borderRadius: 99,
+          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'rgba(255,255,255,0.04)',
+        }}>
+          <div className={isConnected ? 'led-pulse' : 'led led-red'} />
+          <span style={{ fontSize: 12, color: isConnected ? '#22c55e' : '#f87171', fontWeight: 600 }}>
+            {isConnected ? 'System Online' : 'Offline'}
+          </span>
           {isConnected && deviceCount > 0 && (
-            <span className="neu-badge" style={{ marginRight: 4 }}>
-              {deviceCount} device{deviceCount !== 1 ? 's' : ''}
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>
+              · {deviceCount} device{deviceCount !== 1 ? 's' : ''}
             </span>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div className={isConnected ? 'led-pulse' : 'led led-red'} />
-            <span style={{ fontSize: 11, color: isConnected ? '#22c55e' : '#f87171', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              {isConnected ? 'Live' : 'Offline'}
-            </span>
-          </div>
         </div>
       </header>
 
@@ -91,19 +91,18 @@ export default function App() {
         
         {/* ── SIDEBAR NAV ── */}
         <nav style={{
-          width: 240,
-          background: 'var(--bg-card)',
-          borderRight: '1px solid rgba(255,255,255,0.04)',
-          boxShadow: '2px 0 12px #0d0f11',
-          padding: '24px 16px',
+          width: 220,
+          background: 'var(--bg-dark)',
+          borderRight: '1px solid rgba(255,255,255,0.05)',
+          padding: '20px 12px 20px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 8,
+          gap: 4,
           flexShrink: 0,
           zIndex: 10,
         }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, paddingLeft: 12 }}>
-            Main Menu
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10, paddingLeft: 12 }}>
+            Navigation
           </div>
           {TABS.map(tab => (
             <button
@@ -112,10 +111,26 @@ export default function App() {
               onClick={() => setActiveTab(tab.id)}
               className={`neu-tab${activeTab === tab.id ? ' active' : ''}`}
             >
-              <span style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{tab.icon}</span>
+              <span style={{ fontSize: 15, width: 22, textAlign: 'center', opacity: activeTab === tab.id ? 1 : 0.7 }}>{tab.icon}</span>
               {tab.id}
             </button>
           ))}
+
+          {/* Spacer + connection status at bottom */}
+          <div style={{ flex: 1 }} />
+          <div style={{
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+            paddingTop: 16,
+            paddingLeft: 12,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div className={isConnected ? 'led-pulse' : 'led led-red'} style={{ width: 8, height: 8 }} />
+              <span style={{ fontSize: 11, color: isConnected ? '#22c55e' : '#f87171', fontWeight: 600 }}>
+                {isConnected ? 'System Online' : 'Offline'}
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>All systems operational</div>
+          </div>
         </nav>
 
         {/* ── MAIN ── */}

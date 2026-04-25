@@ -6,32 +6,36 @@
 
 @layer base {
   :root {
-    --bg-base: #212529;
-    --bg-dark: #1a1d21;
-    --bg-card: #23272b;
+    /* ── Backgrounds ── */
+    --bg-base:  #0d1117;   /* deepest page bg — near black navy */
+    --bg-dark:  #0f1420;   /* sidebar / deep panels */
+    --bg-card:  #161b27;   /* card surfaces */
+    --bg-card2: #1c2235;   /* elevated card / header */
 
-    --text-main: #d8dde6;
-    --text-dim: #6b7280;
-    --text-muted: #4b5563;
+    /* ── Text ── */
+    --text-main:  #e2e8f0;
+    --text-dim:   #7e8fa3;
+    --text-muted: #4a5568;
 
-    --accent: #1a4dff;
-    --accent-light: #4d74ff;
-    --accent-glow: rgba(26, 77, 255, 0.40);
-    --accent-glow-sm: rgba(26, 77, 255, 0.22);
+    /* ── Accent (electric blue matching logo) ── */
+    --accent:       #2563eb;
+    --accent-light: #60a5fa;
+    --accent-glow:     rgba(37, 99, 235, 0.35);
+    --accent-glow-sm:  rgba(37, 99, 235, 0.18);
 
-    /* Shadow Physics — top-left light source */
-    --sh-flat:  8px  8px 18px #141619, -8px -8px 18px #2e343b;
-    --sh-hover: 12px 12px 24px #141619, -12px -12px 24px #2e343b;
-    --sh-press: inset 5px 5px 10px #141619, inset -5px -5px 10px #2e343b;
-    --sh-trough: inset 4px 4px 8px #111315, inset -4px -4px 8px #2c323a;
-    --sh-deep:  inset 6px 6px 14px #0d0f11, inset -6px -6px 14px #2e343b;
+    /* ── Shadows — clean, minimal depth ── */
+    --sh-flat:  0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.25);
+    --sh-hover: 0 2px 8px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.3);
+    --sh-press: inset 0 2px 6px rgba(0,0,0,0.5);
+    --sh-trough: inset 0 1px 4px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.03);
+    --sh-deep:   inset 0 2px 8px rgba(0,0,0,0.6);
 
-    /* Glows */
-    --glow:       0 0 16px var(--accent-glow);
+    /* ── Glows ── */
+    --glow:       0 0 20px var(--accent-glow);
     --glow-sm:    0 0 10px var(--accent-glow-sm);
-    --glow-green: 0 0 10px rgba(34, 197, 94,  0.4);
-    --glow-red:   0 0 10px rgba(239, 68,  68,  0.4);
-    --glow-amber: 0 0 10px rgba(251, 191, 36,  0.4);
+    --glow-green: 0 0 10px rgba(34, 197, 94,  0.35);
+    --glow-red:   0 0 10px rgba(239, 68,  68,  0.35);
+    --glow-amber: 0 0 10px rgba(251, 191, 36,  0.35);
   }
 
   *, *::before, *::after {
@@ -73,26 +77,30 @@
 
   /* Raised plate — standard card */
   .neu-plate {
-    background: var(--bg-base);
-    border-radius: 16px;
+    background: var(--bg-card);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.06);
     box-shadow: var(--sh-flat);
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
   }
   .neu-plate:hover {
     box-shadow: var(--sh-hover);
+    border-color: rgba(255,255,255,0.1);
   }
 
   /* Inset — gently pressed surface */
   .neu-inset {
-    background: var(--bg-card);
-    border-radius: 12px;
+    background: var(--bg-dark);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.04);
     box-shadow: var(--sh-press);
   }
 
   /* Major page panel */
   .neu-section {
     background: var(--bg-card);
-    border-radius: 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.06);
     box-shadow: var(--sh-flat);
     overflow: hidden;
   }
@@ -101,8 +109,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-    background: linear-gradient(135deg, #2a2f34 0%, #1e2226 100%);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    background: var(--bg-card2);
   }
   .neu-section-body {
     padding: 20px;
@@ -129,11 +137,13 @@
   .neu-trough {
     background: var(--bg-dark);
     border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.04);
     box-shadow: var(--sh-trough);
   }
   .neu-deep {
-    background: #1a1d21;
+    background: #090d14;
     border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.04);
     box-shadow: var(--sh-deep);
   }
 
@@ -154,13 +164,13 @@
 
   /* ─── BUTTONS ─── */
   .neu-btn {
-    background: var(--bg-base);
-    border: none;
+    background: var(--bg-card2);
+    border: 1px solid rgba(255,255,255,0.07);
     border-radius: 10px;
     color: var(--text-main);
     cursor: pointer;
     box-shadow: var(--sh-flat);
-    transition: box-shadow 0.15s ease, transform 0.1s ease;
+    transition: box-shadow 0.15s ease, border-color 0.15s, transform 0.1s ease;
     font-weight: 500;
     font-size: 0.85rem;
     letter-spacing: 0.02em;
@@ -169,7 +179,7 @@
     justify-content: center;
     gap: 6px;
   }
-  .neu-btn:hover  { box-shadow: var(--sh-hover); }
+  .neu-btn:hover  { box-shadow: var(--sh-hover); border-color: rgba(255,255,255,0.12); }
   .neu-btn:active {
     box-shadow: var(--sh-press);
     transform: translateY(1px);
@@ -177,7 +187,6 @@
   .neu-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-    box-shadow: var(--sh-flat);
     transform: none;
   }
 
@@ -213,18 +222,18 @@
   .neu-input {
     width: 100%;
     background: var(--bg-dark);
-    border: none;
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 8px;
-    box-shadow: var(--sh-trough);
     color: var(--text-main);
     padding: 10px 14px;
     font-size: 0.85rem;
     outline: none;
-    transition: box-shadow 0.2s ease;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
   .neu-input::placeholder { color: var(--text-muted); }
   .neu-input:focus {
-    box-shadow: var(--sh-trough), 0 0 0 2px var(--accent-glow), var(--glow-sm);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow-sm);
   }
 
   .neu-textarea {
@@ -291,26 +300,28 @@
   .neu-badge {
     display: inline-flex;
     align-items: center;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border-radius: 99px;
     font-size: 0.68rem;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    background: var(--bg-dark);
-    box-shadow: var(--sh-trough);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
     color: var(--text-dim);
   }
   .neu-badge-accent {
-    color: var(--accent);
-    text-shadow: var(--glow-sm);
+    background: rgba(37,99,235,0.12);
+    border-color: rgba(37,99,235,0.3);
+    color: var(--accent-light);
   }
   .neu-badge-green {
+    background: rgba(34,197,94,0.1);
+    border-color: rgba(34,197,94,0.25);
     color: #22c55e;
-    text-shadow: var(--glow-green);
   }
-  .neu-badge-red   { color: #ef4444; }
-  .neu-badge-amber { color: #fbbf24; }
+  .neu-badge-red   { color: #f87171; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.25); }
+  .neu-badge-amber { color: #fbbf24; background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.25); }
 
   /* ─── STAT BLOCKS ─── */
   .neu-stat {
@@ -461,29 +472,29 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 16px;
-    font-size: 0.85rem;
-    font-weight: 600;
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    font-weight: 500;
     color: var(--text-dim);
     border: none;
-    border-radius: 12px;
+    border-radius: 10px;
     background: transparent;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.18s ease;
     white-space: nowrap;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
     width: 100%;
     text-align: left;
   }
   .neu-tab:hover { 
     color: var(--text-main); 
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.05);
   }
   .neu-tab.active {
-    color: var(--accent);
-    background: linear-gradient(90deg, rgba(26, 77, 255, 0.15) 0%, transparent 100%);
-    box-shadow: inset 3px 0 0 var(--accent);
-    text-shadow: var(--glow-sm);
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+    font-weight: 600;
   }
 }
 

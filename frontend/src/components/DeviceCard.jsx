@@ -1,60 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
 import { commandDevice, getDevicePreviewUrl } from '../api'
 
-/* ── Big SVG icons per device type ── */
-const DEVICE_ICON = {
-  switch: ({ color }) => (
-    <svg viewBox="0 0 64 64" width="52" height="52" fill="none">
-      <circle cx="32" cy="32" r="26" stroke={color} strokeWidth="3.5" opacity="0.25"/>
-      <circle cx="32" cy="32" r="18" stroke={color} strokeWidth="3" opacity="0.5"/>
-      <line x1="32" y1="10" x2="32" y2="26" stroke={color} strokeWidth="4" strokeLinecap="round"/>
-      <circle cx="32" cy="32" r="6" fill={color}/>
-      <circle cx="32" cy="32" r="3" fill="#0d0f11"/>
-    </svg>
-  ),
-  dimmable_switch: ({ color }) => (
-    <svg viewBox="0 0 64 64" width="52" height="52" fill="none">
-      <circle cx="32" cy="28" r="12" stroke={color} strokeWidth="3" opacity="0.7"/>
-      <path d="M32 16 Q32 8 32 8" stroke={color} strokeWidth="3" strokeLinecap="round" opacity="0.4"/>
-      {[0,45,90,135,180,225,270,315].map((a,i) => (
-        <line key={i}
-          x1={32 + 20*Math.cos(a*Math.PI/180)} y1={28 + 20*Math.sin(a*Math.PI/180)}
-          x2={32 + 24*Math.cos(a*Math.PI/180)} y2={28 + 24*Math.sin(a*Math.PI/180)}
-          stroke={color} strokeWidth="2.5" strokeLinecap="round" opacity="0.5"/>
-      ))}
-      <path d="M24 44 Q32 52 40 44" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.7"/>
-      <line x1="28" y1="50" x2="36" y2="50" stroke={color} strokeWidth="3" strokeLinecap="round" opacity="0.7"/>
-    </svg>
-  ),
-  sensor: ({ color }) => (
-    <svg viewBox="0 0 64 64" width="52" height="52" fill="none">
-      <path d="M12 48 Q12 18 32 18 Q52 18 52 48" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.3"/>
-      <path d="M20 48 Q20 26 32 26 Q44 26 44 48" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.55"/>
-      <path d="M28 48 Q28 34 32 34 Q36 34 36 48" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.8"/>
-      <circle cx="32" cy="50" r="4" fill={color}/>
-    </svg>
-  ),
-  security_camera: ({ color }) => (
-    <svg viewBox="0 0 64 64" width="52" height="52" fill="none">
-      <rect x="8" y="20" width="32" height="24" rx="5" stroke={color} strokeWidth="3" opacity="0.8"/>
-      <path d="M40 28 L56 20 L56 44 L40 36 Z" stroke={color} strokeWidth="2.5" strokeLinejoin="round" fill="none" opacity="0.7"/>
-      <circle cx="22" cy="32" r="5" stroke={color} strokeWidth="2.5" opacity="0.9"/>
-      <circle cx="22" cy="32" r="2" fill={color}/>
-    </svg>
-  ),
-  generic: ({ color }) => (
-    <svg viewBox="0 0 64 64" width="52" height="52" fill="none">
-      <rect x="12" y="12" width="40" height="40" rx="8" stroke={color} strokeWidth="3" opacity="0.7"/>
-      <circle cx="32" cy="32" r="8" stroke={color} strokeWidth="3" opacity="0.9"/>
-      <circle cx="32" cy="32" r="3" fill={color}/>
-    </svg>
-  ),
-}
+/* ── Resolve a colorful emoji icon + bg color from name + type ── */
+function resolveIcon(name, type) {
+  const n = name.toLowerCase()
 
-/* Color based on state */
-function stateColor(isOn, isNumeric) {
-  if (isNumeric) return 'var(--accent)'
-  return isOn ? '#22c55e' : '#4e5762'
+  // Name-based inference (more specific wins)
+  if (/lamp|bulb|light|led/.test(n))       return { emoji: '💡', bg: 'rgba(251,191,36,0.12)',  glow: 'rgba(251,191,36,0.25)' }
+  if (/fan|ventil|exhaust/.test(n))        return { emoji: '🌀', bg: 'rgba(52,211,153,0.12)',  glow: 'rgba(52,211,153,0.25)' }
+  if (/temp|therm|heat/.test(n))           return { emoji: '🌡️', bg: 'rgba(239,68,68,0.12)',   glow: 'rgba(239,68,68,0.25)' }
+  if (/humid|moisture|water/.test(n))      return { emoji: '💧', bg: 'rgba(96,165,250,0.12)',  glow: 'rgba(96,165,250,0.25)' }
+  if (/cam|camera|security|eye/.test(n))   return { emoji: '📷', bg: 'rgba(167,139,250,0.12)', glow: 'rgba(167,139,250,0.25)' }
+  if (/door|lock|gate|entry/.test(n))      return { emoji: '🚪', bg: 'rgba(251,146,60,0.12)',  glow: 'rgba(251,146,60,0.25)' }
+  if (/motion|pir|presence/.test(n))       return { emoji: '🚶', bg: 'rgba(234,179,8,0.12)',   glow: 'rgba(234,179,8,0.25)' }
+  if (/smoke|gas|co2|air/.test(n))         return { emoji: '💨', bg: 'rgba(107,114,128,0.15)', glow: 'rgba(107,114,128,0.25)' }
+  if (/pump|valve|flow/.test(n))           return { emoji: '⚗️', bg: 'rgba(56,189,248,0.12)',  glow: 'rgba(56,189,248,0.25)' }
+  if (/curtain|blind|shade|roller/.test(n))return { emoji: '🪟', bg: 'rgba(96,165,250,0.10)',  glow: 'rgba(96,165,250,0.2)'  }
+  if (/speaker|audio|sound/.test(n))       return { emoji: '🔊', bg: 'rgba(167,139,250,0.12)', glow: 'rgba(167,139,250,0.25)' }
+  if (/tv|display|screen/.test(n))         return { emoji: '📺', bg: 'rgba(96,165,250,0.12)',  glow: 'rgba(96,165,250,0.25)' }
+  if (/plug|socket|outlet|power/.test(n))  return { emoji: '🔌', bg: 'rgba(34,197,94,0.12)',   glow: 'rgba(34,197,94,0.25)' }
+
+  // Fall back to type
+  if (type === 'security_camera') return { emoji: '📷', bg: 'rgba(167,139,250,0.12)', glow: 'rgba(167,139,250,0.25)' }
+  if (type === 'dimmable_switch') return { emoji: '💡', bg: 'rgba(251,191,36,0.12)',  glow: 'rgba(251,191,36,0.25)' }
+  if (type === 'switch')          return { emoji: '🔌', bg: 'rgba(34,197,94,0.12)',   glow: 'rgba(34,197,94,0.25)' }
+  if (type === 'sensor')          return { emoji: '📡', bg: 'rgba(37,99,235,0.12)',   glow: 'rgba(37,99,235,0.25)' }
+  return                                  { emoji: '⚙️', bg: 'rgba(107,114,128,0.12)', glow: 'rgba(107,114,128,0.2)' }
 }
 
 export default function DeviceCard({ name, data }) {
@@ -66,8 +37,7 @@ export default function DeviceCard({ name, data }) {
   const isOn        = statusStr === 'ON'
   const isNumeric   = !isNaN(parseFloat(data.status)) && data.status !== 'ON' && data.status !== 'OFF'
   const deviceLabel = name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-  const IconComp    = DEVICE_ICON[data.type] ?? DEVICE_ICON.generic
-  const color       = stateColor(isOn, isNumeric)
+  const icon        = resolveIcon(name, data.type)
 
   const toggle = async () => {
     if (toggling || isNumeric) return
@@ -99,7 +69,8 @@ export default function DeviceCard({ name, data }) {
 
   /* Glow effect when ON */
   const glowStyle = isOn && !isNumeric ? {
-    boxShadow: 'var(--sh-deep), 0 0 24px rgba(34,197,94,0.08)',
+    borderColor: 'rgba(34,197,94,0.2)',
+    boxShadow: 'var(--sh-flat), 0 0 20px rgba(34,197,94,0.07)',
   } : {}
 
   return (
@@ -161,15 +132,18 @@ export default function DeviceCard({ name, data }) {
             width: 72,
             height: 72,
             borderRadius: 18,
-            background: isOn ? `rgba(34,197,94,0.07)` : isNumeric ? 'rgba(26,77,255,0.07)' : 'rgba(255,255,255,0.03)',
-            boxShadow: 'var(--sh-trough)',
+            background: isOn ? icon.glow.replace('0.25', '0.15') : icon.bg,
+            border: `1px solid ${isOn ? icon.glow : 'rgba(255,255,255,0.05)'}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            transition: 'background 0.4s',
+            fontSize: 34,
+            transition: 'all 0.4s ease',
+            boxShadow: isOn ? `0 0 20px ${icon.glow}` : 'none',
+            filter: isOn ? 'brightness(1.1)' : 'grayscale(0.3) brightness(0.85)',
           }}>
-            <IconComp color={color} />
+            {icon.emoji}
           </div>
 
           {/* Name + type + time */}
