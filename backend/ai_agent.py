@@ -13,6 +13,7 @@ if not _api_key or _api_key.startswith("sk-proj-REPLACE"):
     )
 
 client = AsyncOpenAI(api_key=_api_key)
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4.1")
 
 # ─────────────────────────────────────────
 # SYSTEM PROMPT
@@ -262,7 +263,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage) -> str:
     try:
         # First API call — may return tool calls
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model=MODEL_NAME,
             messages=messages,
             tools=TOOLS,
             tool_choice="auto",
@@ -303,7 +304,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage) -> str:
 
             # Second API call — with tool results, get final reply
             final_response = await client.chat.completions.create(
-                model="gpt-4o",
+                model=MODEL_NAME,
                 messages=messages,
                 max_tokens=1024,
             )
