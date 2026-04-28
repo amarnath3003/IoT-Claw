@@ -8,6 +8,20 @@
 
 IoT-Claw is an open-source IoT dashboard that lets you monitor and control smart home devices through a conversational AI interface. It connects a React frontend to a FastAPI backend that manages MQTT-based devices, automation workflows, and a simulated security camera.
 
+## Table of Contents
+
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Backend Setup](#backend-setup)
+- [Frontend Setup](#frontend-setup)
+- [Hardware Setup](#hardware-setup)
+- [MQTT Configuration](#mqtt-configuration)
+- [API Endpoints](#api-endpoints)
+- [Architecture](#architecture)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Features
 
 - 🤖 **AI Chat Interface** – Control devices using natural language powered by OpenAI
