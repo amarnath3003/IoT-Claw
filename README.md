@@ -70,3 +70,19 @@ npm run dev
 ```
 
 The dashboard will open at `http://localhost:5173`.
+
+## Hardware Setup
+
+The `hardware/` directory contains an Arduino sketch for an ESP32 that controls two LEDs over MQTT.
+
+1. Open `hardware/esp32_dual_led_mqtt/esp32_dual_led_mqtt.ino` in the Arduino IDE.
+2. Replace the placeholder Wi-Fi credentials and broker IP:
+   - `YOUR_WIFI_NAME` → your Wi-Fi SSID
+   - `YOUR_WIFI_PASSWORD` → your Wi-Fi password
+   - `192.168.1.100` → your PC's LAN IP address
+3. Upload the sketch to the ESP32.
+4. Wire the LEDs:
+   - LED 1: GPIO 26 → resistor → LED anode; cathode → GND
+   - LED 2: GPIO 27 → resistor → LED anode; cathode → GND
+
+See [`hardware/ESP32_SETUP.md`](hardware/ESP32_SETUP.md) for detailed wiring and end-to-end testing steps.
