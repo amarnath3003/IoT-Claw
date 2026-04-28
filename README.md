@@ -27,3 +27,11 @@ IoT-Claw is an open-source IoT dashboard that lets you monitor and control smart
 | AI | OpenAI API |
 | Messaging | MQTT (Mosquitto broker) |
 | Hardware | ESP32 (Arduino sketch) |
+
+## Prerequisites
+
+- Python 3.10 or later
+- Node.js 18 or later and npm
+- [Mosquitto MQTT broker](https://mosquitto.org/download/) running on port 1883
+- An OpenAI API key (for the AI chat feature)
+- Arduino IDE with the ESP32 board package and `PubSubClient` library installed (for hardware control)
