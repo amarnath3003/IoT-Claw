@@ -161,3 +161,7 @@ Contributions are welcome! Please follow these steps:
 4. Open a pull request with a clear description of what was changed and why.
 
 Please keep pull requests focused on a single concern and follow the existing code style.
+
+## License
+
+This project is released under the [MIT License](LICENSE).
