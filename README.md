@@ -150,3 +150,14 @@ Full interactive docs are available at `http://localhost:8000/docs` when the bac
               │  (LED / sensors)    │
               └─────────────────────┘
 ```
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository and create a feature branch: `git checkout -b feat/your-feature`
+2. Make your changes and add tests where applicable.
+3. Run the backend tests and ensure the frontend builds without errors.
+4. Open a pull request with a clear description of what was changed and why.
+
+Please keep pull requests focused on a single concern and follow the existing code style.
