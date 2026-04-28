@@ -124,3 +124,29 @@ allow_anonymous true
 | `WS` | `/ws` | WebSocket for real-time device state updates |
 
 Full interactive docs are available at `http://localhost:8000/docs` when the backend is running.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     React Frontend                       │
+│  (Vite · Tailwind CSS · WebSocket client)                │
+└────────────────────────┬─────────────────────────────────┘
+                         │ REST / WebSocket
+┌────────────────────────▼─────────────────────────────────┐
+│                   FastAPI Backend                        │
+│  ┌─────────────┐  ┌───────────┐  ┌──────────────────┐   │
+│  │  AI Agent   │  │  Storage  │  │ Execution Engine  │   │
+│  │ (OpenAI)    │  │ (JSON)    │  │ (workflows)       │   │
+│  └─────────────┘  └───────────┘  └──────────────────┘   │
+└────────────────────────┬─────────────────────────────────┘
+                         │ MQTT publish / subscribe
+              ┌──────────▼──────────┐
+              │  Mosquitto Broker   │
+              └──────────┬──────────┘
+                         │
+              ┌──────────▼──────────┐
+              │  ESP32 Hardware     │
+              │  (LED / sensors)    │
+              └─────────────────────┘
+```
