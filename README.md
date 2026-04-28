@@ -35,3 +35,28 @@ IoT-Claw is an open-source IoT dashboard that lets you monitor and control smart
 - [Mosquitto MQTT broker](https://mosquitto.org/download/) running on port 1883
 - An OpenAI API key (for the AI chat feature)
 - Arduino IDE with the ESP32 board package and `PubSubClient` library installed (for hardware control)
+
+## Backend Setup
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Copy `.env.example` to `.env` and fill in your credentials:
+
+```env
+OPENAI_API_KEY=sk-...
+MQTT_BROKER_HOST=localhost
+MQTT_BROKER_PORT=1883
+```
+
+Start the server:
+
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+The API will be available at `http://localhost:8000` and interactive docs at `http://localhost:8000/docs`.
