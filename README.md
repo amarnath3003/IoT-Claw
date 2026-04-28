@@ -86,3 +86,21 @@ The `hardware/` directory contains an Arduino sketch for an ESP32 that controls 
    - LED 2: GPIO 27 → resistor → LED anode; cathode → GND
 
 See [`hardware/ESP32_SETUP.md`](hardware/ESP32_SETUP.md) for detailed wiring and end-to-end testing steps.
+
+## MQTT Configuration
+
+The backend subscribes to `<topic_base>/state` and publishes to `<topic_base>/set` for each registered device.
+
+Default topic mapping for the two built-in LED devices:
+
+| Device | Subscribe (state) | Publish (command) |
+|--------|-------------------|-------------------|
+| `light_control_1` | `home/hall/light/state` | `home/hall/light/set` |
+| `light_control_2` | `home/hall/light2/state` | `home/hall/light2/set` |
+
+For Mosquitto to accept connections from the ESP32 on your LAN, add the following to your `mosquitto.conf`:
+
+```conf
+listener 1883
+allow_anonymous true
+```
