@@ -104,3 +104,23 @@ For Mosquitto to accept connections from the ESP32 on your LAN, add the followin
 listener 1883
 allow_anonymous true
 ```
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/chat` | Send a natural-language message to the AI agent |
+| `GET` | `/state` | Get current state of all registered devices |
+| `POST` | `/devices` | Register a new MQTT device |
+| `DELETE` | `/devices/{name}` | Delete a registered device |
+| `POST` | `/devices/{name}/command` | Send `ON` or `OFF` to a device |
+| `GET` | `/devices/{name}/preview` | Get the latest camera preview frame (JPEG) |
+| `GET` | `/logs` | Retrieve recent activity logs |
+| `GET` | `/workflows` | List all automation workflows |
+| `POST` | `/workflows` | Create a new automation workflow |
+| `PATCH` | `/workflows/{id}/toggle` | Enable or disable a workflow |
+| `POST` | `/workflows/{id}/run` | Manually execute a workflow |
+| `DELETE` | `/workflows/{id}` | Delete a workflow |
+| `WS` | `/ws` | WebSocket for real-time device state updates |
+
+Full interactive docs are available at `http://localhost:8000/docs` when the backend is running.
