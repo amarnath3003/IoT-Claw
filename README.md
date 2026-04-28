@@ -17,3 +17,13 @@ IoT-Claw is an open-source IoT dashboard that lets you monitor and control smart
 - 📷 **Security Camera Simulator** – View a live-preview JPEG feed from a simulated camera
 - 📊 **Activity Logs** – Full audit trail of all commands and state changes
 - 🔌 **WebSocket Updates** – Real-time state push to all connected frontend clients
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, Vite, Tailwind CSS |
+| Backend | FastAPI, Uvicorn, Python 3.10+ |
+| AI | OpenAI API |
+| Messaging | MQTT (Mosquitto broker) |
+| Hardware | ESP32 (Arduino sketch) |
