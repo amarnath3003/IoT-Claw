@@ -60,3 +60,13 @@ uvicorn main:app --reload --port 8000
 ```
 
 The API will be available at `http://localhost:8000` and interactive docs at `http://localhost:8000/docs`.
+
+## Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The dashboard will open at `http://localhost:5173`.
