@@ -140,6 +140,36 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 ---
 
+## ✅ Implemented (2026-05-01) — Round 2
+
+### Features 5–8 implemented:
+
+**Feature 5 — Real-Time Sensor Graphing:**
+- `backend/storage.py` — in-memory `_telemetry` ring buffer (60 readings per device); `add_telemetry()`, `get_telemetry()`
+- `backend/mqtt_client.py` — any numeric MQTT state update is also buffered as telemetry
+- `backend/main.py` — `GET /devices/{name}/telemetry` endpoint
+- `frontend/src/api.js` — `getTelemetry(name)`
+- `frontend/src/components/DeviceCard.jsx` — SVG `<Sparkline>` component (polyline + gradient area fill + latest-value dot); polls every 2s; shows for all numeric sensors and edge devices with ADC data
+
+**Feature 6 — Script Version History & Rollback:**
+- `backend/storage.py` — `add_script_history()`, `get_script_history()` (last 10 per device, newest first)
+- `backend/ai_agent.py` — `push_script_fn` now saves to history on every push; new `rollback_script` AI tool
+- `backend/main.py` — `GET /devices/{name}/scripts`, `POST /devices/{name}/scripts/{index}/rollback`
+- `frontend/src/api.js` — `getScriptHistory()`, `rollbackScript()`
+- `frontend/src/components/DeviceCard.jsx` — `<ScriptHistoryDrawer>` modal: lists all versions with timestamps, view/expand code, one-click Rollback button for each past version
+
+**Feature 7 — Multi-Device Script Broadcast:**
+- `backend/ai_agent.py` — `push_script_group` AI tool: pushes script to all `micropython_edge_agent` devices matching a location (empty = all edge devices); saves history on each
+
+**Feature 8 — Device Health Heartbeat Monitor:**
+- `backend/mqtt_client.py` — subscribes to `home/+/heartbeat`; `_handle_heartbeat()` updates `last_heartbeat` and revives devices marked offline
+- `backend/storage.py` — `update_device_heartbeat(device_name)`
+- `backend/execution_engine.py` — `_check_heartbeats()` runs every 5s; marks device `offline` if no heartbeat for >90s
+- `hardware/micropython_edge_agent.py` — publishes `alive` to `{TOPIC_BASE}/heartbeat` every 30s; also publishes ADC reading to `/state` every 500ms for telemetry
+- `frontend/src/components/DeviceCard.jsx` — red OFFLINE badge, greyed icon, disabled toggle, live heartbeat timestamp, red card glow
+
+---
+
 ## 💡 Additional Integration Suggestions
 
 ### 5. Real-Time Sensor Graphing via High-Frequency MQTT Telemetry
