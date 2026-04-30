@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard'
 import Devices from './components/Devices'
 import WorkflowEditor from './components/WorkflowEditor'
 import TemplateLibrary from './components/TemplateLibrary'
+import FlashDevice from './components/FlashDevice'
 import useWebSocket from './hooks/useWebSocket'
 import './index.css'
 
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'Chat',      icon: '⌘' },
   { id: 'Workflows', icon: '⟳' },
   { id: 'Templates', icon: '⊟' },
+  { id: 'Flash',     icon: '⚡' },
 ]
 
 export default function App() {
@@ -141,6 +143,7 @@ export default function App() {
             {activeTab === 'Chat'       && <Chat messages={chatMessages} setMessages={setChatMessages} />}
             {activeTab === 'Workflows'  && <WorkflowEditor deviceStates={deviceStates} />}
             {activeTab === 'Templates'  && <TemplateLibrary />}
+            {activeTab === 'Flash'      && <FlashDevice />}
           </div>
         </main>
       </div>

@@ -203,6 +203,26 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 - `frontend/src/api.js` — `getTelemetryExportUrl(name)`
 - `frontend/src/components/DeviceCard.jsx` — `⬇ CSV` download link on numeric sensor and edge ADC sparkline panels
 
+
+
 **Feature 11 — Dashboard Stats Fix + Enhancements:**
 - `frontend/src/components/Dashboard.jsx` — fixed offline count bug (was `total − onCount`, now counts only `status === "OFFLINE"`); added **Edge** and **Workflows** stat tiles; active workflow count fetched on mount
+
+---
+
+## ✅ Implemented (2026-05-01) — Round 4
+
+### Phase 1 — Web-Based Firmware Flashing
+
+**Files changed:**
+- `frontend/src/components/FlashDevice.jsx` — **new Flash Wizard component**:
+  - Step 1: Configure WiFi SSID/password, MQTT broker IP, Device ID, location, and LED GPIO pin
+  - Step 2: Preview the auto-generated `main.py` MicroPython script with all credentials embedded
+  - Step 3 Method A: One-click **Web Serial API** flash — browser connects to ESP32 over USB, pushes script into MicroPython REPL via raw paste protocol (Chrome/Edge 89+)
+  - Step 3 Method B: Manual upload instructions with `mpremote` command and Thonny guide as fallback
+  - Step 4: Done screen — shows device summary (ID, topic, broker, location) and a "Flash Another" reset
+- `frontend/src/App.jsx` — added `⚡ Flash` tab to the sidebar nav; renders `<FlashDevice />` when active
+
+**New user flow:**
+> User opens Flash tab → fills in WiFi + MQTT + device name → clicks "Generate" → previews script → clicks "Connect & Flash via Web Serial" → browser prompts for USB port → firmware pushed in-browser — device auto-discovers on MQTT and appears in dashboard within seconds. Zero terminal, zero IDE required.
 
