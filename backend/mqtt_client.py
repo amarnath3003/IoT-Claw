@@ -52,6 +52,9 @@ class MQTTClient:
                 topic = device_data.get("topic_base", "") + "/state"
                 client.subscribe(topic)
                 print(f"[MQTT] Subscribed to {topic}")
+            # MCP discovery: auto-register edge devices that announce their capabilities
+            client.subscribe("home/discovery/#")
+            print("[MQTT] Subscribed to home/discovery/#")
         else:
             print(f"[MQTT] Connection failed with code {rc}")
 
@@ -59,6 +62,11 @@ class MQTTClient:
         topic = msg.topic
         payload = msg.payload.decode("utf-8")
         print(f"[MQTT] Received: {topic} = {payload}")
+
+        # MCP discovery: ESP32 devices announce capabilities on boot
+        if topic.startswith("home/discovery/"):
+            self._handle_discovery(topic, payload)
+            return
 
         # Try to parse payload as JSON or number
         try:
@@ -88,6 +96,38 @@ class MQTTClient:
                 }),
                 self._loop
             )
+
+    def _handle_discovery(self, topic: str, payload: str):
+        """Auto-register an edge device from its MCP capability manifest."""
+        try:
+            manifest = json.loads(payload)
+        except json.JSONDecodeError:
+            print(f"[MQTT] Discovery: invalid JSON from {topic}")
+            return
+
+        device_id = manifest.get("device_id") or topic.split("/")[-1]
+        topic_base = manifest.get("topic_base", f"home/esp32/{device_id}")
+        device_type = manifest.get("type", "micropython_edge_agent")
+        location = manifest.get("location", "")
+        description = manifest.get("description", f"MicroPython edge agent ({device_id})")
+
+        device = {
+            "name": device_id,
+            "topic_base": topic_base,
+            "type": device_type,
+            "location": location,
+            "description": description,
+            "capabilities": manifest.get("tools", []),
+        }
+        self.storage.ensure_device(device)
+        self.client.subscribe(topic_base + "/state")
+
+        self.storage.add_log(
+            "success", "mqtt",
+            f"Edge device discovered: {device_id} ({len(manifest.get('tools', []))} tools)",
+            {"device_id": device_id, "topic_base": topic_base, "tools": manifest.get("tools", [])}
+        )
+        print(f"[MQTT] Discovery: registered edge device '{device_id}' with {len(manifest.get('tools', []))} MCP tools")
 
     def _on_disconnect(self, client, userdata, rc):
         if rc != 0:

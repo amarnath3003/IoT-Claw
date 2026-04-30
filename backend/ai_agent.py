@@ -52,6 +52,23 @@ SYSTEM_PROMPT = """You are iotClaw — a highly intelligent IoT automation assis
 - For "blink when motion detected" → sensor trigger on camera device + blink action using sequence
 - For "alert me at 9pm" → schedule trigger + log action
 
+═══ EDGE SCRIPTING (MicroPython) ═══
+Some devices are MicroPython edge agents (type: micropython_edge_agent). These support dynamic code injection:
+- Use get_device_capabilities(device) to inspect what hardware pins/tools it exposes.
+- Use push_script(device, script, description) to push MicroPython code that runs LOCALLY on the ESP32.
+- Always write valid MicroPython. Available modules: machine, time, ujson, math.
+- For repeating logic (sensor polling, blink patterns), define a loop() function — the firmware calls it every 100ms.
+- For one-shot setup, write top-level code (no loop() needed).
+- MicroPython example for "blink LED on pin 2 when ADC pin 34 > 2000":
+  from machine import Pin, ADC
+  led = Pin(2, Pin.OUT)
+  adc = ADC(Pin(34))
+  adc.atten(ADC.ATTN_11DB)
+  def loop():
+      led.value(1 if adc.read() > 2000 else 0)
+- Prefer push_script over control_device for complex automations on edge devices.
+- After pushing, confirm what logic the device will run locally.
+
 ═══ TONE ═══
 Be concise, friendly, and confident. Confirm what you did in 1-2 sentences. Use emojis sparingly for warmth."""
 
@@ -286,6 +303,44 @@ Actions: device (ON/OFF), brightness, camera_monitor, log.""",
     {
         "type": "function",
         "function": {
+            "name": "push_script",
+            "description": """Push a MicroPython script to an ESP32 edge device for local execution.
+Use for complex automations that need millisecond response (sensor thresholds, blink patterns, ADC-driven logic).
+The script runs directly on the ESP32 — no round-trips to the backend.
+Define a loop() function for repeating logic (called every 100ms by the firmware).
+Available MicroPython modules: machine (Pin, ADC, PWM, I2C), time, ujson, math.
+Only use on devices with type 'micropython_edge_agent'.""",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string", "description": "Target edge device name"},
+                    "script": {
+                        "type": "string",
+                        "description": "Valid MicroPython code. For repeating logic define a loop() function. Example: 'from machine import Pin\\nled=Pin(2,Pin.OUT)\\ndef loop():\\n  led.toggle()'"
+                    },
+                    "description": {"type": "string", "description": "Human-readable description of what the script does"}
+                },
+                "required": ["device_name", "script", "description"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_device_capabilities",
+            "description": "Get the MCP capabilities manifest of an edge device — lists its native hardware tools (pins, sensors, actuators). Call this before push_script to know what hardware is available.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string"}
+                },
+                "required": ["device_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_logs",
             "description": "Retrieve recent activity logs. Use when user asks for history, recent actions, or what happened.",
             "parameters": {
@@ -494,6 +549,39 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         storage.add_log("success", "ai", f"AI ran workflow: {workflow.get('name')}", {"workflow_id": workflow["id"]})
         return {"status": "ran", "workflow": workflow.get("name"), "result": result}
 
+    def push_script_fn(device_name: str, script: str, description: str = "") -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
+            return {"error": f"Device '{device_name}' not found.", "known_devices": list(devices.keys())}
+        device = devices[matched]
+        topic = device["topic_base"] + "/script"
+        success = mqtt.publish(topic, script)
+        if success:
+            storage.update_device_field(matched, "last_script", description)
+            storage.add_log(
+                "success", "ai",
+                f"AI pushed edge script to {matched}: {description}",
+                {"device": matched, "bytes": len(script), "description": description}
+            )
+            return {"status": "script_pushed", "device": matched, "topic": topic,
+                    "bytes": len(script), "description": description}
+        return {"error": f"MQTT publish failed for {topic}"}
+
+    def get_device_capabilities_fn(device_name: str) -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
+            return {"error": f"Device '{device_name}' not found.", "known_devices": list(devices.keys())}
+        device = devices[matched]
+        capabilities = device.get("capabilities")
+        if not capabilities:
+            return {
+                "device": matched,
+                "type": device.get("type"),
+                "capabilities": None,
+                "note": "No MCP manifest received yet. Device may not be a MicroPython edge agent, or hasn't booted yet."
+            }
+        return {"device": matched, "type": device.get("type"), "capabilities": capabilities}
+
     def get_logs_fn(limit: int = 20) -> dict:
         logs = storage.get_logs(limit=limit)
         return {"logs": logs, "count": len(logs)}
@@ -513,6 +601,8 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         "delete_workflow": delete_workflow_fn,
         "execute_workflow": execute_workflow_fn,
         "get_logs": get_logs_fn,
+        "push_script": push_script_fn,
+        "get_device_capabilities": get_device_capabilities_fn,
     }
 
 

@@ -114,3 +114,49 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 **Step 4: Web Flash UI**
 - Add the `esp-web-tools` script to our React frontend to allow one-click installation of the base MicroPython image for completely seamless user onboarding.
 
+---
+
+## ✅ Implemented (2026-05-01)
+
+### Phase 2 + Phase 3 — MCP Discovery & Dynamic Edge Scripting
+
+**Files changed:**
+- `backend/mqtt_client.py` — subscribes to `home/discovery/#`; new `_handle_discovery()` auto-registers edge devices and stores their MCP tool manifest when they boot.
+- `backend/ai_agent.py` — added `push_script` and `get_device_capabilities` tools + system prompt section teaching the AI to write MicroPython for edge devices.
+- `hardware/micropython_edge_agent.py` — **new MicroPython firmware** for ESP32:
+  - Connects to WiFi + MQTT on boot
+  - Publishes full capability manifest to `home/discovery/<device_id>` (retained)
+  - Subscribes to `<topic_base>/set` (direct ON/OFF) and `<topic_base>/script` (dynamic code)
+  - Executes received scripts with `exec()`; if the script defines `loop()`, calls it every 100ms
+  - MQTT keepalive + auto-reconnect on network drop
+
+**New AI capabilities:**
+- `get_device_capabilities(device)` — AI inspects what hardware a device exposes before scripting it
+- `push_script(device, script, description)` — AI generates + pushes live MicroPython to the device
+
+**Example interaction now possible:**
+> User: "Make the LED on esp32_edge_1 blink twice fast whenever the ADC on pin 34 exceeds 2500"
+> AI → `get_device_capabilities(esp32_edge_1)` → sees ADC + LED tools → `push_script(...)` with real MicroPython → ESP32 runs it locally forever with ~100ms latency, no backend round-trip
+
+---
+
+## 💡 Additional Integration Suggestions
+
+### 5. Real-Time Sensor Graphing via High-Frequency MQTT Telemetry
+**What:** Edge devices currently only publish state on change. Add a configurable telemetry mode where the ESP32 publishes sensor readings (ADC, temperature, etc.) at a fixed interval (e.g., every 500ms) to `<topic_base>/telemetry`.
+**Backend:** New `/telemetry/{device}` WebSocket stream endpoint that buffers the last N readings.
+**Frontend:** Add a mini sparkline/chart in DeviceCard for sensor-type devices using a lightweight lib like `recharts`.
+**Why:** Turns the dashboard from a state-snapshot view into a live data stream — much more useful for monitoring physical environments.
+
+### 6. Script Version History & Rollback
+**What:** When `push_script` is called, store the script content + timestamp + description in `storage.json` under `devices[name].script_history` (cap at last 10). Add an AI tool `rollback_script(device, version)` and a UI drawer in DeviceCard showing past scripts with one-click re-push.
+**Why:** Edge scripts can misbehave (crash the loop, wrong pin). Rollback gives a safety net without needing to physically access the device.
+
+### 7. Multi-Device Edge Orchestration via Script Broadcast
+**What:** Add a `push_script_group(location, script, description)` AI tool that pushes the same script to all edge devices in a given location (e.g., "living_room"). Useful for synchronized light effects, coordinated sensor polling, or room-wide automation.
+**Why:** Today's MQTT structure naturally supports fan-out — this just exposes it as a first-class AI tool.
+
+### 8. Device Health Heartbeat Monitor
+**What:** Edge devices publish a `home/<device_id>/heartbeat` ping every 30s. The backend tracks `last_heartbeat` per device and marks a device `offline` if no ping arrives within 90s. The execution engine can trigger a workflow on device-offline events.
+**Why:** Currently, a crashed or unplugged ESP32 stays "online" in the dashboard forever. This makes device health visible and actionable.
+

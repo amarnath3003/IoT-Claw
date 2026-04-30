@@ -1,0 +1,191 @@
+"""
+IoT-Claw MicroPython Edge Agent
+Flash this onto an ESP32 using MicroPython firmware.
+
+Features:
+  - Auto-publishes MCP capability manifest on boot (enables backend auto-discovery)
+  - Executes dynamic Python scripts pushed from the AI agent over MQTT
+  - Handles direct ON/OFF device control via /set topic
+  - Runs a local edge loop (calls loop() from the last pushed script every 100ms)
+
+Setup:
+  1. Flash MicroPython onto your ESP32: https://micropython.org/download/ESP32_GENERIC/
+  2. Edit WIFI_SSID, WIFI_PASS, MQTT_BROKER, DEVICE_ID below
+  3. Upload this file as main.py using mpremote or Thonny
+"""
+
+import network
+import time
+import json
+from umqtt.simple import MQTTClient
+from machine import Pin
+
+# ── Configuration ────────────────────────────────────────────────────────────
+
+WIFI_SSID = "Students_Wifi"
+WIFI_PASS = ""          # set your WiFi password
+MQTT_BROKER = "10.10.24.24"
+MQTT_PORT = 1883
+DEVICE_ID = "esp32_edge_1"   # unique per device
+TOPIC_BASE = "home/esp32/" + DEVICE_ID
+DISCOVERY_TOPIC = "home/discovery/" + DEVICE_ID
+
+# Built-in status LED (GPIO 2 on most ESP32 dev boards)
+_status_led = Pin(2, Pin.OUT)
+
+# ── MCP Capability Manifest ───────────────────────────────────────────────────
+# This is published on boot so the backend auto-registers this device and
+# the AI agent knows what hardware is available for scripting.
+
+CAPABILITIES = {
+    "device_id": DEVICE_ID,
+    "topic_base": TOPIC_BASE,
+    "type": "micropython_edge_agent",
+    "description": f"MicroPython edge agent on ESP32 ({DEVICE_ID})",
+    "location": "",          # edit to e.g. "living_room"
+    "tools": [
+        {
+            "name": "set_led",
+            "description": "Control the onboard LED on GPIO 2",
+            "params": {"state": ["ON", "OFF"]}
+        },
+        {
+            "name": "read_adc",
+            "description": "Read ADC value (0-4095) from a GPIO pin",
+            "params": {"pin": "int (e.g. 34, 35, 36, 39)"}
+        },
+        {
+            "name": "set_pin",
+            "description": "Set any GPIO pin high or low",
+            "params": {"pin": "int", "state": ["ON", "OFF"]}
+        },
+        {
+            "name": "exec_script",
+            "description": "Execute arbitrary MicroPython via MQTT /script topic",
+            "params": {"code": "str — MicroPython code, define loop() for repeating logic"}
+        }
+    ]
+}
+
+# ── Edge Script State ─────────────────────────────────────────────────────────
+
+_edge_globals = {}   # namespace for the currently running edge script
+_script_loaded = False
+
+# ── WiFi ──────────────────────────────────────────────────────────────────────
+
+def connect_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    if wlan.isconnected():
+        return True
+    print(f"[WiFi] Connecting to {WIFI_SSID}...")
+    wlan.connect(WIFI_SSID, WIFI_PASS)
+    for _ in range(40):
+        if wlan.isconnected():
+            print(f"[WiFi] Connected: {wlan.ifconfig()[0]}")
+            return True
+        _status_led.value(not _status_led.value())
+        time.sleep(0.25)
+    print("[WiFi] Failed to connect")
+    return False
+
+# ── MQTT callbacks ────────────────────────────────────────────────────────────
+
+def on_message(topic, msg):
+    global _edge_globals, _script_loaded
+    topic = topic.decode()
+    msg = msg.decode().strip()
+    print(f"[MQTT] {topic} = {msg[:80]}")
+
+    if topic == TOPIC_BASE + "/script":
+        # Dynamic code injection — run the script and capture loop() if defined
+        _edge_globals = {}
+        try:
+            exec(msg, _edge_globals)
+            _script_loaded = "loop" in _edge_globals
+            status = {"status": "script_loaded", "has_loop": _script_loaded, "ok": True}
+            mqtt.publish(TOPIC_BASE + "/state", json.dumps(status))
+            print(f"[Edge] Script loaded (loop={'yes' if _script_loaded else 'no'})")
+        except Exception as e:
+            _script_loaded = False
+            err = {"status": "script_error", "error": str(e), "ok": False}
+            mqtt.publish(TOPIC_BASE + "/state", json.dumps(err))
+            print(f"[Edge] Script error: {e}")
+
+    elif topic == TOPIC_BASE + "/set":
+        # Direct ON/OFF control of the status LED
+        if msg == "ON":
+            _status_led.on()
+        elif msg == "OFF":
+            _status_led.off()
+        mqtt.publish(TOPIC_BASE + "/state", msg)
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+if not connect_wifi():
+    # Rapid blink = WiFi failure, halt
+    while True:
+        _status_led.value(not _status_led.value())
+        time.sleep(0.1)
+
+mqtt = MQTTClient(
+    client_id=DEVICE_ID,
+    server=MQTT_BROKER,
+    port=MQTT_PORT,
+    keepalive=30
+)
+mqtt.set_callback(on_message)
+mqtt.connect()
+
+# Announce capabilities so backend auto-registers this device
+mqtt.publish(DISCOVERY_TOPIC, json.dumps(CAPABILITIES), retain=True)
+print(f"[MCP] Published capability manifest to {DISCOVERY_TOPIC}")
+
+# Subscribe to control topics
+mqtt.subscribe(TOPIC_BASE + "/set")
+mqtt.subscribe(TOPIC_BASE + "/script")
+print(f"[MQTT] Subscribed to {TOPIC_BASE}/set and /script")
+
+# Slow heartbeat blink = ready
+_status_led.on()
+time.sleep(0.2)
+_status_led.off()
+
+# ── Main loop ─────────────────────────────────────────────────────────────────
+
+_last_ping = time.ticks_ms()
+PING_INTERVAL_MS = 25_000  # keepalive ping every 25s
+
+while True:
+    try:
+        mqtt.check_msg()   # non-blocking poll for incoming MQTT messages
+
+        # Run the edge loop function if a script defines one
+        if _script_loaded and "loop" in _edge_globals:
+            try:
+                _edge_globals["loop"]()
+            except Exception as e:
+                print(f"[Edge] loop() error: {e}")
+                _script_loaded = False
+
+        # Keepalive ping to prevent broker disconnect
+        now = time.ticks_ms()
+        if time.ticks_diff(now, _last_ping) > PING_INTERVAL_MS:
+            mqtt.ping()
+            _last_ping = now
+
+        time.sleep_ms(100)
+
+    except OSError as e:
+        # Network drop — reconnect
+        print(f"[MQTT] Lost connection: {e}. Reconnecting...")
+        time.sleep(2)
+        try:
+            mqtt.connect()
+            mqtt.subscribe(TOPIC_BASE + "/set")
+            mqtt.subscribe(TOPIC_BASE + "/script")
+            mqtt.publish(DISCOVERY_TOPIC, json.dumps(CAPABILITIES), retain=True)
+        except Exception as re:
+            print(f"[MQTT] Reconnect failed: {re}")
+            time.sleep(5)
