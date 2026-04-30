@@ -159,6 +159,41 @@ async def device_preview(name: str):
     return Response(content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store, no-cache"})
 
 
+@app.get("/devices/{name}/telemetry")
+async def get_telemetry(name: str):
+    """Return buffered sensor readings (last 60) for sparkline charts."""
+    if name not in storage.get_all_devices():
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    return storage.get_telemetry(name)
+
+
+@app.get("/devices/{name}/scripts")
+async def get_script_history(name: str):
+    """Return the last 10 scripts pushed to an edge device."""
+    if name not in storage.get_all_devices():
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    return storage.get_script_history(name)
+
+
+@app.post("/devices/{name}/scripts/{index}/rollback")
+async def rollback_script(name: str, index: int):
+    """Re-push a previous script version to an edge device."""
+    device = storage.get_all_devices().get(name)
+    if not device:
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    history = storage.get_script_history(name)
+    if index >= len(history):
+        raise HTTPException(status_code=404, detail=f"Script version {index} not found (history has {len(history)} entries)")
+    entry = history[index]
+    topic = device["topic_base"] + "/script"
+    ok = mqtt.publish(topic, entry["script"])
+    if ok:
+        storage.add_script_history(name, {**entry, "description": f"[rollback] {entry['description']}"})
+        storage.add_log("info", "api", f"Rolled back script on {name}: {entry['description']}", {"device": name, "version": index})
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return {"status": "rolled_back" if ok else "mqtt_failed", "device": name, "entry": entry}
+
+
 @app.get("/logs")
 async def get_logs(limit: int = Query(100, ge=1, le=500)):
     """Return recent activity logs."""

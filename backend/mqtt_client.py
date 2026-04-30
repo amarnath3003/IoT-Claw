@@ -55,6 +55,9 @@ class MQTTClient:
             # MCP discovery: auto-register edge devices that announce their capabilities
             client.subscribe("home/discovery/#")
             print("[MQTT] Subscribed to home/discovery/#")
+            # Heartbeat monitoring: track all device liveness
+            client.subscribe("home/+/heartbeat")
+            print("[MQTT] Subscribed to home/+/heartbeat")
         else:
             print(f"[MQTT] Connection failed with code {rc}")
 
@@ -68,6 +71,11 @@ class MQTTClient:
             self._handle_discovery(topic, payload)
             return
 
+        # Heartbeat: update last_heartbeat timestamp for the sending device
+        if topic.endswith("/heartbeat"):
+            self._handle_heartbeat(topic)
+            return
+
         # Try to parse payload as JSON or number
         try:
             value = json.loads(payload)
@@ -79,6 +87,11 @@ class MQTTClient:
 
         # Update storage
         device_name = self.storage.update_device_state_from_topic(topic, value)
+
+        # Buffer numeric readings for sparkline telemetry
+        if device_name and isinstance(value, (int, float)):
+            self.storage.add_telemetry(device_name, value)
+
         self.storage.add_log(
             "info",
             "mqtt",
@@ -128,6 +141,19 @@ class MQTTClient:
             {"device_id": device_id, "topic_base": topic_base, "tools": manifest.get("tools", [])}
         )
         print(f"[MQTT] Discovery: registered edge device '{device_id}' with {len(manifest.get('tools', []))} MCP tools")
+
+    def _handle_heartbeat(self, topic: str):
+        """Update last_heartbeat for a device and clear any offline status."""
+        topic_base = topic[: -len("/heartbeat")]
+        devices = self.storage.get_all_devices()
+        for name, data in devices.items():
+            if data.get("topic_base") == topic_base:
+                self.storage.update_device_heartbeat(name)
+                # Revive device if it was previously marked offline
+                if str(data.get("status", "")).lower() == "offline":
+                    self.storage.update_device_field(name, "status", "online")
+                    self.storage.add_log("success", "mqtt", f"Device '{name}' came back online", {"device": name})
+                return
 
     def _on_disconnect(self, client, userdata, rc):
         if rc != 0:

@@ -20,6 +20,8 @@ class Storage:
         self._data = self._load()
         self._data.setdefault("logs", [])
         self._logs = deque(self._data["logs"], maxlen=MAX_LOGS)
+        # In-memory telemetry ring buffer — not persisted (volatile sensor readings)
+        self._telemetry: dict[str, deque] = {}
 
     def _load(self) -> dict:
         if os.path.exists(self.filepath):
@@ -183,6 +185,42 @@ class Storage:
                 w for w in self._data["workflows"] if w.get("id") != workflow_id
             ]
             self._save()
+
+    # ── Telemetry (in-memory ring buffer for sensor readings) ──
+
+    def add_telemetry(self, device_name: str, value: float):
+        if device_name not in self._telemetry:
+            self._telemetry[device_name] = deque(maxlen=60)
+        self._telemetry[device_name].append({
+            "ts": datetime.now().isoformat(),
+            "v": round(float(value), 4)
+        })
+
+    def get_telemetry(self, device_name: str) -> list:
+        return list(self._telemetry.get(device_name, []))
+
+    # ── Device heartbeat ──
+
+    def update_device_heartbeat(self, device_name: str):
+        with self._lock:
+            if device_name in self._data["devices"]:
+                self._data["devices"][device_name]["last_heartbeat"] = datetime.now().isoformat()
+                self._save()
+
+    # ── Script history (last 10 scripts pushed to an edge device) ──
+
+    def add_script_history(self, device_name: str, entry: dict):
+        with self._lock:
+            if device_name not in self._data["devices"]:
+                return
+            history = self._data["devices"][device_name].get("script_history", [])
+            history.insert(0, entry)
+            self._data["devices"][device_name]["script_history"] = history[:10]
+            self._save()
+
+    def get_script_history(self, device_name: str) -> list:
+        with self._lock:
+            return list(self._data["devices"].get(device_name, {}).get("script_history", []))
 
     def increment_workflow_run(self, workflow_id: str):
         with self._lock:

@@ -154,12 +154,27 @@ _status_led.off()
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
-_last_ping = time.ticks_ms()
-PING_INTERVAL_MS = 25_000  # keepalive ping every 25s
+_last_ping      = time.ticks_ms()
+_last_heartbeat = time.ticks_ms()
+_last_telemetry = time.ticks_ms()
+PING_INTERVAL_MS      = 25_000   # MQTT keepalive
+HEARTBEAT_INTERVAL_MS = 30_000   # backend offline detection threshold is 90s
+TELEMETRY_INTERVAL_MS = 500      # sensor reading rate for sparkline charts
+
+# Optional: read ADC on pin 34 for telemetry (comment out if no sensor connected)
+try:
+    from machine import ADC
+    _adc = ADC(Pin(34))
+    _adc.atten(ADC.ATTN_11DB)   # 0–3.3V range → 0–4095
+    _has_adc = True
+except Exception:
+    _has_adc = False
 
 while True:
     try:
         mqtt.check_msg()   # non-blocking poll for incoming MQTT messages
+
+        now = time.ticks_ms()
 
         # Run the edge loop function if a script defines one
         if _script_loaded and "loop" in _edge_globals:
@@ -169,8 +184,18 @@ while True:
                 print(f"[Edge] loop() error: {e}")
                 _script_loaded = False
 
-        # Keepalive ping to prevent broker disconnect
-        now = time.ticks_ms()
+        # Publish heartbeat so backend knows device is alive
+        if time.ticks_diff(now, _last_heartbeat) > HEARTBEAT_INTERVAL_MS:
+            mqtt.publish(TOPIC_BASE + "/heartbeat", "alive")
+            _last_heartbeat = now
+
+        # Publish ADC telemetry reading for sparkline dashboard
+        if _has_adc and time.ticks_diff(now, _last_telemetry) > TELEMETRY_INTERVAL_MS:
+            reading = _adc.read()
+            mqtt.publish(TOPIC_BASE + "/state", str(reading))
+            _last_telemetry = now
+
+        # MQTT keepalive ping to prevent broker disconnect
         if time.ticks_diff(now, _last_ping) > PING_INTERVAL_MS:
             mqtt.ping()
             _last_ping = now

@@ -43,4 +43,13 @@ export const runWorkflow = (id) =>
 export const deleteWorkflow = (id) =>
   api.delete(`/workflows/${id}`)
 
+export const getTelemetry = (name) =>
+  api.get(`/devices/${encodeURIComponent(name)}/telemetry`)
+
+export const getScriptHistory = (name) =>
+  api.get(`/devices/${encodeURIComponent(name)}/scripts`)
+
+export const rollbackScript = (name, index) =>
+  api.post(`/devices/${encodeURIComponent(name)}/scripts/${index}/rollback`)
+
 export default api

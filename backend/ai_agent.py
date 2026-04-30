@@ -327,6 +327,37 @@ Only use on devices with type 'micropython_edge_agent'.""",
     {
         "type": "function",
         "function": {
+            "name": "push_script_group",
+            "description": "Push the same MicroPython script to ALL edge devices in a given location simultaneously. Use for synchronized effects: room-wide lighting patterns, coordinated sensor polling, etc. Pass an empty string for location to target all edge devices.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "Room/location name to target (e.g. 'living_room'). Empty string = all edge devices."},
+                    "script": {"type": "string", "description": "Valid MicroPython code to push to all matched devices."},
+                    "description": {"type": "string", "description": "Human-readable description of what the script does"}
+                },
+                "required": ["location", "script", "description"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rollback_script",
+            "description": "Re-push a previous script version to an edge device. Use version=0 for the most recently pushed script, version=1 for the one before that, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string"},
+                    "version": {"type": "integer", "description": "History index: 0 = last pushed, 1 = second-last, etc. (default 1 to undo the latest)", "default": 1}
+                },
+                "required": ["device_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_device_capabilities",
             "description": "Get the MCP capabilities manifest of an edge device — lists its native hardware tools (pins, sensors, actuators). Call this before push_script to know what hardware is available.",
             "parameters": {
@@ -549,6 +580,55 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         storage.add_log("success", "ai", f"AI ran workflow: {workflow.get('name')}", {"workflow_id": workflow["id"]})
         return {"status": "ran", "workflow": workflow.get("name"), "result": result}
 
+    def push_script_group_fn(location: str, script: str, description: str = "") -> dict:
+        devices = storage.get_all_devices()
+        targets = [
+            name for name, d in devices.items()
+            if d.get("type") == "micropython_edge_agent"
+            and (not location or d.get("location", "").lower() == location.lower())
+        ]
+        if not targets:
+            return {"error": f"No edge devices found for location '{location}'.", "known_devices": list(devices.keys())}
+        results = []
+        for name in targets:
+            topic = devices[name]["topic_base"] + "/script"
+            ok = mqtt.publish(topic, script)
+            if ok:
+                storage.add_script_history(name, {
+                    "ts": __import__("datetime").datetime.now().isoformat(),
+                    "script": script,
+                    "description": description
+                })
+            results.append({"device": name, "ok": ok})
+        storage.add_log(
+            "success", "ai",
+            f"AI broadcast script to {len(targets)} edge device(s) in '{location or 'all'}': {description}",
+            {"targets": targets, "bytes": len(script)}
+        )
+        return {"pushed_to": len([r for r in results if r["ok"]]), "devices": targets, "results": results}
+
+    def rollback_script_fn(device_name: str, version: int = 1) -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
+            return {"error": f"Device '{device_name}' not found.", "known_devices": list(devices.keys())}
+        history = storage.get_script_history(matched)
+        if not history:
+            return {"error": f"No script history for '{matched}'. Push a script first."}
+        if version >= len(history):
+            return {"error": f"Version {version} doesn't exist. History has {len(history)} entries (0–{len(history)-1})."}
+        entry = history[version]
+        topic = devices[matched]["topic_base"] + "/script"
+        success = mqtt.publish(topic, entry["script"])
+        if success:
+            storage.add_script_history(matched, {**entry, "description": f"[rollback v{version}] {entry['description']}"})
+            storage.add_log(
+                "info", "ai",
+                f"AI rolled back script on {matched} to v{version}: {entry['description']}",
+                {"device": matched, "version": version}
+            )
+            return {"status": "rolled_back", "device": matched, "version": version, "description": entry["description"]}
+        return {"error": "MQTT publish failed"}
+
     def push_script_fn(device_name: str, script: str, description: str = "") -> dict:
         matched, devices = _resolve(device_name)
         if not matched:
@@ -558,6 +638,11 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         success = mqtt.publish(topic, script)
         if success:
             storage.update_device_field(matched, "last_script", description)
+            storage.add_script_history(matched, {
+                "ts": __import__("datetime").datetime.now().isoformat(),
+                "script": script,
+                "description": description,
+            })
             storage.add_log(
                 "success", "ai",
                 f"AI pushed edge script to {matched}: {description}",
@@ -602,6 +687,8 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         "execute_workflow": execute_workflow_fn,
         "get_logs": get_logs_fn,
         "push_script": push_script_fn,
+        "push_script_group": push_script_group_fn,
+        "rollback_script": rollback_script_fn,
         "get_device_capabilities": get_device_capabilities_fn,
     }
 

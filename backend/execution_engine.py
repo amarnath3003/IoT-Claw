@@ -48,8 +48,9 @@ class ExecutionEngine:
     async def _evaluate_all(self):
         workflows = self.storage.get_workflows()
         devices = self.storage.get_all_devices()
-        # Schedules are user-facing, so evaluate them in the machine's local time.
         now = datetime.now()
+
+        self._check_heartbeats(devices, now)
 
         for workflow in workflows:
             if not workflow.get("enabled", True):
@@ -68,6 +69,25 @@ class ExecutionEngine:
                     self._execute_workflow_actions(workflow)
             except Exception as e:
                 print(f"[Engine] Error evaluating workflow '{workflow.get('name')}': {e}")
+
+    def _check_heartbeats(self, devices: dict, now: datetime):
+        """Mark devices offline if no heartbeat received within 90 seconds."""
+        for name, data in devices.items():
+            hb = data.get("last_heartbeat")
+            if not hb:
+                continue
+            try:
+                last = datetime.fromisoformat(hb)
+                if (now - last).total_seconds() > 90 and str(data.get("status", "")).lower() != "offline":
+                    self.storage.update_device_field(name, "status", "offline")
+                    self.storage.add_log(
+                        "warning", "engine",
+                        f"Device '{name}' went offline (no heartbeat for >90s)",
+                        {"device": name}
+                    )
+                    print(f"[Engine] {name} marked offline — heartbeat timeout")
+            except Exception:
+                pass
 
     def _evaluate_sensor_trigger(self, workflow, trigger, devices, now):
         device_name = trigger.get("device")
