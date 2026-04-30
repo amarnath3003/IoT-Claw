@@ -1,10 +1,21 @@
+import { useEffect, useState } from 'react'
 import ActivityLog from './ActivityLog'
 import DeviceCard from './DeviceCard'
+import { getWorkflows } from '../api'
 
 export default function Dashboard({ deviceStates }) {
-  const devices = Object.entries(deviceStates || {})
-  const onCount  = devices.filter(([, d]) => String(d.status).toUpperCase() === 'ON').length
-  const offCount = devices.length - onCount
+  const [activeWorkflows, setActiveWorkflows] = useState(0)
+
+  useEffect(() => {
+    getWorkflows()
+      .then(r => setActiveWorkflows(r.data.filter(w => w.enabled !== false).length))
+      .catch(() => {})
+  }, [])
+
+  const devices     = Object.entries(deviceStates || {})
+  const onCount     = devices.filter(([, d]) => String(d.status).toUpperCase() === 'ON').length
+  const offlineCount = devices.filter(([, d]) => String(d.status).toUpperCase() === 'OFFLINE').length
+  const edgeCount   = devices.filter(([, d]) => d.type === 'micropython_edge_agent').length
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
@@ -14,9 +25,11 @@ export default function Dashboard({ deviceStates }) {
         {devices.length > 0 && (
           <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
             {[
-              { label: 'Total',   value: devices.length, color: 'var(--text-main)' },
-              { label: 'Online',  value: onCount,         color: '#22c55e' },
-              { label: 'Offline', value: offCount,        color: 'var(--text-dim)' },
+              { label: 'Total',     value: devices.length,  color: 'var(--text-main)' },
+              { label: 'Online',    value: onCount,          color: '#22c55e' },
+              { label: 'Offline',   value: offlineCount,     color: offlineCount > 0 ? '#ef4444' : 'var(--text-dim)' },
+              { label: 'Edge',      value: edgeCount,        color: 'rgba(99,102,241,0.9)' },
+              { label: 'Workflows', value: activeWorkflows,  color: '#fbbf24' },
             ].map(s => (
               <div key={s.label} className="neu-plate" style={{ padding: '14px 20px', flex: 1 }}>
                 <div className="neu-stat-value" style={{ color: s.color }}>{s.value}</div>

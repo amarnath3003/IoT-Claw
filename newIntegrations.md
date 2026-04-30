@@ -190,3 +190,19 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 **What:** Edge devices publish a `home/<device_id>/heartbeat` ping every 30s. The backend tracks `last_heartbeat` per device and marks a device `offline` if no ping arrives within 90s. The execution engine can trigger a workflow on device-offline events.
 **Why:** Currently, a crashed or unplugged ESP32 stays "online" in the dashboard forever. This makes device health visible and actionable.
 
+---
+
+## ✅ Implemented (2026-05-01) — Round 3
+
+**Feature 9 — Device Event Workflow Triggers:**
+- `backend/execution_engine.py` — `_check_heartbeats()` now fires `device_event` workflows on offline/online transitions; also detects device recovery (heartbeat resumes after timeout)
+- `backend/ai_agent.py` — `device_event` added as trigger type (`event: "offline"|"online"`, optional `device` filter); system prompt updated with examples
+
+**Feature 10 — Telemetry CSV Export:**
+- `backend/main.py` — `GET /devices/{name}/telemetry/export` returns CSV file
+- `frontend/src/api.js` — `getTelemetryExportUrl(name)`
+- `frontend/src/components/DeviceCard.jsx` — `⬇ CSV` download link on numeric sensor and edge ADC sparkline panels
+
+**Feature 11 — Dashboard Stats Fix + Enhancements:**
+- `frontend/src/components/Dashboard.jsx` — fixed offline count bug (was `total − onCount`, now counts only `status === "OFFLINE"`); added **Edge** and **Workflows** stat tiles; active workflow count fetched on mount
+

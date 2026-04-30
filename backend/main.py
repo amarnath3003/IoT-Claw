@@ -1,3 +1,5 @@
+import csv
+import io
 from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -165,6 +167,24 @@ async def get_telemetry(name: str):
     if name not in storage.get_all_devices():
         raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
     return storage.get_telemetry(name)
+
+
+@app.get("/devices/{name}/telemetry/export")
+async def export_telemetry_csv(name: str):
+    """Download buffered telemetry readings as a CSV file."""
+    if name not in storage.get_all_devices():
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    readings = storage.get_telemetry(name)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["timestamp", "value"])
+    for r in readings:
+        writer.writerow([r["ts"], r["v"]])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{name}_telemetry.csv"'},
+    )
 
 
 @app.get("/devices/{name}/scripts")

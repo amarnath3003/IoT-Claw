@@ -52,4 +52,7 @@ export const getScriptHistory = (name) =>
 export const rollbackScript = (name, index) =>
   api.post(`/devices/${encodeURIComponent(name)}/scripts/${index}/rollback`)
 
+export const getTelemetryExportUrl = (name) =>
+  `${API_BASE}/devices/${encodeURIComponent(name)}/telemetry/export`
+
 export default api

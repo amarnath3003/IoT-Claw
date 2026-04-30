@@ -72,13 +72,16 @@ class ExecutionEngine:
 
     def _check_heartbeats(self, devices: dict, now: datetime):
         """Mark devices offline if no heartbeat received within 90 seconds."""
+        workflows = self.storage.get_workflows()
         for name, data in devices.items():
             hb = data.get("last_heartbeat")
             if not hb:
                 continue
             try:
                 last = datetime.fromisoformat(hb)
-                if (now - last).total_seconds() > 90 and str(data.get("status", "")).lower() != "offline":
+                elapsed = (now - last).total_seconds()
+                current_status = str(data.get("status", "")).lower()
+                if elapsed > 90 and current_status != "offline":
                     self.storage.update_device_field(name, "status", "offline")
                     self.storage.add_log(
                         "warning", "engine",
@@ -86,8 +89,33 @@ class ExecutionEngine:
                         {"device": name}
                     )
                     print(f"[Engine] {name} marked offline — heartbeat timeout")
+                    self._fire_device_event_workflows(workflows, name, "offline", now)
+                elif elapsed <= 90 and current_status == "offline":
+                    # Device came back online
+                    self.storage.update_device_field(name, "status", "online")
+                    self.storage.add_log(
+                        "success", "engine",
+                        f"Device '{name}' came back online (heartbeat resumed)",
+                        {"device": name}
+                    )
+                    self._fire_device_event_workflows(workflows, name, "online", now)
             except Exception:
                 pass
+
+    def _fire_device_event_workflows(self, workflows: list, device_name: str, event: str, now: datetime):
+        """Fire all enabled device_event workflows that match device + event."""
+        for workflow in workflows:
+            if not workflow.get("enabled", True):
+                continue
+            trigger = workflow.get("trigger", {})
+            if trigger.get("type") != "device_event":
+                continue
+            if trigger.get("event") != event:
+                continue
+            target = trigger.get("device", "")
+            if target and target != device_name:
+                continue
+            self._fire_if_ready(workflow, now)
 
     def _evaluate_sensor_trigger(self, workflow, trigger, devices, now):
         device_name = trigger.get("device")

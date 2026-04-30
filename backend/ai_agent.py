@@ -47,10 +47,13 @@ SYSTEM_PROMPT = """You are iotClaw — a highly intelligent IoT automation assis
 - Never fail if you can make a reasonable inference
 
 ═══ WORKFLOW INTELLIGENCE ═══
-- Trigger types: sensor (threshold), chat (secret phrase), schedule (daily HH:MM)
+- Trigger types: sensor (threshold), chat (secret phrase), schedule (daily HH:MM), device_event (offline/online)
 - Always set a meaningful cooldown_seconds based on the use case
 - For "blink when motion detected" → sensor trigger on camera device + blink action using sequence
 - For "alert me at 9pm" → schedule trigger + log action
+- For "if my ESP32 goes offline, turn on the backup light" → device_event trigger (event: "offline") + device ON action
+- For "when edge device comes back online, log it" → device_event trigger (event: "online") + log action
+- device_event cooldown should be ≥300s to avoid re-firing on each engine tick
 
 ═══ EDGE SCRIPTING (MicroPython) ═══
 Some devices are MicroPython edge agents (type: micropython_edge_agent). These support dynamic code injection:
@@ -211,6 +214,7 @@ TOOLS = [
 1. sensor: fires when device value meets condition (e.g. temp > 30)
 2. chat: fires when user types a secret phrase
 3. schedule: fires every day at HH:MM
+4. device_event: fires when a device goes offline or comes back online (event: "offline" | "online")
 Actions: device (ON/OFF), brightness, camera_monitor, log.""",
             "parameters": {
                 "type": "object",
@@ -220,12 +224,13 @@ Actions: device (ON/OFF), brightness, camera_monitor, log.""",
                     "trigger": {
                         "type": "object",
                         "properties": {
-                            "type": {"type": "string", "enum": ["sensor", "chat", "schedule"]},
+                            "type": {"type": "string", "enum": ["sensor", "chat", "schedule", "device_event"]},
                             "device": {"type": "string"},
                             "operator": {"type": "string", "enum": [">", "<", ">=", "<=", "==", "!="]},
                             "value": {"type": "string"},
                             "code": {"type": "string"},
-                            "time": {"type": "string", "description": "HH:MM"}
+                            "time": {"type": "string", "description": "HH:MM"},
+                            "event": {"type": "string", "enum": ["offline", "online"], "description": "For device_event trigger: which event to react to"}
                         },
                         "required": ["type"]
                     },

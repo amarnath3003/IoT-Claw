@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript } from '../api'
+import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript, getTelemetryExportUrl } from '../api'
 
 /* ── Resolve a colorful emoji icon + bg color from name + type ── */
 function resolveIcon(name, type) {
@@ -349,6 +349,18 @@ export default function DeviceCard({ name, data }) {
                 {data.status}
               </span>
               {data.unit && <span style={{ fontSize: 16, color: 'var(--text-dim)' }}>{data.unit}</span>}
+              {telemetry.length > 0 && (
+                <a
+                  href={getTelemetryExportUrl(name)}
+                  download={`${name}_telemetry.csv`}
+                  style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', textDecoration: 'none',
+                    padding: '3px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.08)', transition: 'all 0.15s' }}
+                  title="Download CSV"
+                >
+                  ⬇ CSV
+                </a>
+              )}
             </div>
             {telemetry.length > 1 && <Sparkline points={telemetry} />}
           </div>
@@ -357,7 +369,19 @@ export default function DeviceCard({ name, data }) {
         {/* ── Edge device sparkline (non-numeric but has telemetry) ── */}
         {isEdge && !isNumeric && telemetry.length > 1 && (
           <div className="neu-trough" style={{ padding: '10px 14px' }}>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>ADC telemetry</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>ADC telemetry</span>
+              <a
+                href={getTelemetryExportUrl(name)}
+                download={`${name}_telemetry.csv`}
+                style={{ fontSize: 10, color: 'var(--text-muted)', textDecoration: 'none',
+                  padding: '3px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.08)' }}
+                title="Download CSV"
+              >
+                ⬇ CSV
+              </a>
+            </div>
             <Sparkline points={telemetry} color="rgba(99,102,241,0.9)" />
           </div>
         )}
