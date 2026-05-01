@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript, getTelemetryExportUrl } from '../api'
+import EdgeConsole from './EdgeConsole'
 
 /* ── Resolve a colorful emoji icon + bg color from name + type ── */
 function resolveIcon(name, type) {
@@ -164,12 +165,13 @@ function ScriptHistoryDrawer({ name, onClose }) {
   )
 }
 
-export default function DeviceCard({ name, data }) {
+export default function DeviceCard({ name, data, wsMessages }) {
   const [toggling, setToggling]         = useState(false)
   const [previewTick, setPreviewTick]   = useState(Date.now())
   const [previewError, setPreviewError] = useState(false)
   const [telemetry, setTelemetry]       = useState([])
   const [showHistory, setShowHistory]   = useState(false)
+  const [showConsole, setShowConsole]   = useState(false)
 
   const statusStr   = String(data.status ?? '').toUpperCase()
   const isOffline   = statusStr === 'OFFLINE'
@@ -316,11 +318,16 @@ export default function DeviceCard({ name, data }) {
                   OFFLINE
                 </span>
               )}
-              {/* Edge device — script history button */}
+              {/* Edge device — script history & console buttons */}
               {isEdge && (
-                <button className="history-btn" onClick={() => setShowHistory(true)}>
-                  📜 Scripts
-                </button>
+                <>
+                  <button className="history-btn" onClick={() => setShowHistory(true)}>
+                    📜 Scripts
+                  </button>
+                  <button className="history-btn" onClick={() => setShowConsole(!showConsole)} style={{ marginLeft: 4 }}>
+                    💻 Console
+                  </button>
+                </>
               )}
             </div>
             {lastUpdated && (
@@ -427,6 +434,11 @@ export default function DeviceCard({ name, data }) {
             </svg>
             {isOffline ? 'OFFLINE — No heartbeat' : toggling ? 'Switching…' : isOn ? 'ON — Tap to turn off' : 'OFF — Tap to turn on'}
           </button>
+        )}
+
+        {/* ── Edge Console ── */}
+        {isEdge && showConsole && (
+          <EdgeConsole deviceName={name} wsMessages={wsMessages} />
         )}
       </div>
     </>

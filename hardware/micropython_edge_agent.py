@@ -102,6 +102,15 @@ def connect_wifi():
 
 # ── MQTT callbacks ────────────────────────────────────────────────────────────
 
+def edge_print(*args, **kwargs):
+    """Custom print function injected into edge scripts to route output over MQTT."""
+    msg = " ".join(str(a) for a in args)
+    print("[EdgePrint]", msg)
+    try:
+        mqtt.publish(TOPIC_BASE + "/console", msg)
+    except Exception:
+        pass
+
 def on_message(topic, msg):
     global _edge_globals, _script_loaded
     topic = topic.decode()
@@ -110,7 +119,7 @@ def on_message(topic, msg):
 
     if topic == TOPIC_BASE + "/script":
         # Dynamic code injection — run the script and capture loop() if defined
-        _edge_globals = {}
+        _edge_globals = {"print": edge_print}
         try:
             # ── Persist to flash so script survives power cycle ───────────────
             with open("edge_logic.py", "w") as f:
@@ -179,6 +188,7 @@ try:
     with open("edge_logic.py", "r") as f:
         _saved_script = f.read()
     print("[Edge] Restoring saved script from flash...")
+    _edge_globals = {"print": edge_print}
     exec(_saved_script, _edge_globals)
     _script_loaded = "loop" in _edge_globals
     mqtt.publish(TOPIC_BASE + "/state", json.dumps(

@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 export default function useWebSocket(url) {
   const [deviceStates, setDeviceStates] = useState({})
   const [isConnected, setIsConnected] = useState(false)
+  const [lastMessage, setLastMessage] = useState(null)
   const wsRef = useRef(null)
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export default function useWebSocket(url) {
         if (cancelled) return
         try {
           const msg = JSON.parse(event.data)
+          setLastMessage(msg)
           if (msg.type === 'state') {
             setDeviceStates(msg.data)
           } else if (msg.type === 'device_update') {
@@ -62,5 +64,5 @@ export default function useWebSocket(url) {
     }
   }, [url])
 
-  return { deviceStates, isConnected }
+  return { deviceStates, isConnected, lastMessage }
 }

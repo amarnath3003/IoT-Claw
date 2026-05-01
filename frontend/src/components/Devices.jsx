@@ -39,7 +39,7 @@ const TYPE_LABELS = {
   generic:         'Generic',
 }
 
-export default function Devices({ deviceStates }) {
+export default function Devices({ deviceStates, wsMessages }) {
   const [form, setForm]       = useState(DEFAULT_FORM)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')

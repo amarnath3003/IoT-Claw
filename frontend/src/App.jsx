@@ -25,7 +25,7 @@ const TABS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState('Dashboard')
   const [chatMessages, setChatMessages] = useState([INITIAL_MESSAGE])
-  const { deviceStates, isConnected } = useWebSocket('ws://127.0.0.1:8000/ws')
+  const { deviceStates, isConnected, lastMessage } = useWebSocket('ws://127.0.0.1:8000/ws')
   const deviceCount = Object.keys(deviceStates).length
 
   return (
@@ -138,8 +138,8 @@ export default function App() {
         {/* ── MAIN ── */}
         <main style={{ flex: 1, overflowY: 'auto', padding: '28px 24px' }}>
           <div style={{ maxWidth: 1400, margin: '0 auto', height: '100%' }}>
-            {activeTab === 'Dashboard'  && <Dashboard deviceStates={deviceStates} />}
-            {activeTab === 'Devices'    && <Devices deviceStates={deviceStates} />}
+            {activeTab === 'Dashboard'  && <Dashboard deviceStates={deviceStates} wsMessages={lastMessage} />}
+            {activeTab === 'Devices'    && <Devices deviceStates={deviceStates} wsMessages={lastMessage} />}
             {activeTab === 'Chat'       && <Chat messages={chatMessages} setMessages={setChatMessages} />}
             {activeTab === 'Workflows'  && <WorkflowEditor deviceStates={deviceStates} />}
             {activeTab === 'Templates'  && <TemplateLibrary />}

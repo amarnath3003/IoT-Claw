@@ -3,7 +3,7 @@ import ActivityLog from './ActivityLog'
 import DeviceCard from './DeviceCard'
 import { getWorkflows } from '../api'
 
-export default function Dashboard({ deviceStates }) {
+export default function Dashboard({ deviceStates, wsMessages }) {
   const [activeWorkflows, setActiveWorkflows] = useState(0)
 
   useEffect(() => {
@@ -63,7 +63,7 @@ export default function Dashboard({ deviceStates }) {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
             {devices.map(([name, data]) => (
-              <DeviceCard key={name} name={name} data={data} />
+              <DeviceCard key={name} name={name} data={data} wsMessages={wsMessages} />
             ))}
           </div>
         )}

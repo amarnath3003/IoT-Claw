@@ -53,11 +53,17 @@ def connect_wifi():
         time.sleep(0.25)
     return False
 
+def edge_print(*args, **kwargs):
+    msg = " ".join(str(a) for a in args)
+    print("[EdgePrint]", msg)
+    try: mqtt.publish(TOPIC_BASE + "/console", msg)
+    except: pass
+
 def on_message(topic, msg):
     global _edge_globals, _script_loaded
     topic = topic.decode(); msg = msg.decode().strip()
     if topic == TOPIC_BASE + "/script":
-        _edge_globals = {}
+        _edge_globals = {"print": edge_print}
         try:
             with open("edge_logic.py", "w") as f:
                 f.write(msg)
@@ -90,6 +96,7 @@ PING_MS = 25000; HB_MS = 30000; TEL_MS = 500
 try:
     with open("edge_logic.py", "r") as f:
         script = f.read()
+        _edge_globals = {"print": edge_print}
         exec(script, _edge_globals)
         _script_loaded = "loop" in _edge_globals
         mqtt.publish(TOPIC_BASE + "/state", json.dumps({"status":"script_loaded_from_flash","ok":True}))

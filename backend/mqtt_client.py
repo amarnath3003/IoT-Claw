@@ -58,6 +58,9 @@ class MQTTClient:
             # Heartbeat monitoring: track all device liveness
             client.subscribe("home/+/heartbeat")
             print("[MQTT] Subscribed to home/+/heartbeat")
+            # Edge Console: stream print() statements from devices
+            client.subscribe("home/+/console")
+            print("[MQTT] Subscribed to home/+/console")
         else:
             print(f"[MQTT] Connection failed with code {rc}")
 
@@ -74,6 +77,11 @@ class MQTTClient:
         # Heartbeat: update last_heartbeat timestamp for the sending device
         if topic.endswith("/heartbeat"):
             self._handle_heartbeat(topic)
+            return
+            
+        # Edge Console: route device print statements to websocket
+        if topic.endswith("/console"):
+            self._handle_console(topic, payload)
             return
 
         # Try to parse payload as JSON or number
@@ -154,6 +162,26 @@ class MQTTClient:
                     self.storage.update_device_field(name, "status", "online")
                     self.storage.add_log("success", "mqtt", f"Device '{name}' came back online", {"device": name})
                 return
+
+    def _handle_console(self, topic: str, payload: str):
+        """Forward edge print statements to WebSocket clients."""
+        topic_base = topic[: -len("/console")]
+        devices = self.storage.get_all_devices()
+        device_name = None
+        for name, data in devices.items():
+            if data.get("topic_base") == topic_base:
+                device_name = name
+                break
+        
+        if device_name and self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self.ws_broadcast_fn({
+                    "type": "edge_console",
+                    "device": device_name,
+                    "text": payload
+                }),
+                self._loop
+            )
 
     def _on_disconnect(self, client, userdata, rc):
         if rc != 0:

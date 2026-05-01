@@ -234,8 +234,7 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 ### ~~2. Advanced Structured Local Memory~~ ✅ Done
 
-### 3. Interactive Edge Console
-*   **Real-time Debugging:** Add a terminal-like view to the dashboard where users can see the `print()` output from their running edge scripts in real-time.
+### ~~3. Interactive Edge Console~~ ✅ Done
 
 ### 4. Standardized MCP Protocol Implementation
 *   **Full MCP Server:** Move beyond custom JSON manifests to a formal Model Context Protocol implementation on the ESP32, allowing the hardware to be truly "agent-ready" for any compatible AI hub.
@@ -271,3 +270,15 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 **Success criteria:**
 > Create a workflow in the UI ("If Sensor ADC > 2000, Turn ON Light"). Click "⚡ Deploy to Edge". The backend compiles it to Python, pushes it to the ESP32's internal memory via MQTT, and the automation now executes locally on the hardware in <100ms.
+
+### Interactive Edge Console
+
+**Files changed:**
+- `hardware/micropython_edge_agent.py` & `frontend/src/components/FlashDevice.jsx`: Injected a custom `print()` wrapper into the execution environment that publishes all print statements to `topic_base/console`.
+- `backend/mqtt_client.py`: Added subscriptions to `/console` topics and routed them to WebSocket broadcasts.
+- `frontend/src/hooks/useWebSocket.js`: Exposed the raw `lastMessage` state.
+- `frontend/src/components/EdgeConsole.jsx`: **New file.** A terminal-style component that renders incoming WebSocket console logs.
+- `frontend/src/components/DeviceCard.jsx`: Added the "💻 Console" button for edge devices to toggle the visibility of the new `EdgeConsole` component.
+
+**Success criteria:**
+> Pushing a script with `print("Hello from edge")` will instantly stream that text over MQTT and display it in the browser UI, eliminating the need for a physical USB serial connection for debugging.
