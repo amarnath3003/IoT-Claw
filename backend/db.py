@@ -85,6 +85,19 @@ def init_db():
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(ts DESC)')
 
+    # Create captures table for camera images
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS captures (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_name TEXT,
+            timestamp DATETIME,
+            detected_types TEXT,
+            image_data BLOB,
+            FOREIGN KEY(device_name) REFERENCES devices(name) ON DELETE CASCADE
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_captures_device_ts ON captures(device_name, timestamp DESC)')
+
     conn.commit()
     conn.close()
 

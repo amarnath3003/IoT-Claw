@@ -63,6 +63,25 @@ class Storage:
     def get_all_devices(self) -> dict:
         rows = self._execute('SELECT * FROM devices')
         devices = {}
+        
+        # Batch fetch script history to avoid N+1 queries
+        all_history = self._execute('''
+            SELECT device_name, timestamp, script_content as script, description 
+            FROM script_history 
+            ORDER BY timestamp DESC
+        ''')
+        history_map = {}
+        for h in all_history:
+            d_name = h['device_name']
+            if d_name not in history_map:
+                history_map[d_name] = []
+            if len(history_map[d_name]) < 10:
+                history_map[d_name].append({
+                    "timestamp": h["timestamp"],
+                    "script": h["script"],
+                    "description": h["description"]
+                })
+
         for row in rows:
             if row.get('capabilities'):
                 try:
@@ -70,10 +89,8 @@ class Storage:
                 except:
                     row['capabilities'] = []
             
-            # Fetch script history
-            hist_rows = self._execute('SELECT timestamp, script_content, description FROM script_history WHERE device_name = ? ORDER BY timestamp DESC LIMIT 10', (row['name'],))
-            row['script_history'] = hist_rows
-
+            row['simulated'] = bool(row.get('simulated'))
+            row['script_history'] = history_map.get(row['name'], [])
             devices[row['name']] = row
         return devices
 
@@ -193,10 +210,10 @@ class Storage:
         for row in rows:
             w = json.loads(row['config']) if row.get('config') else {}
             w['id'] = row['id']
-            w['enabled'] = row['enabled']
+            w['enabled'] = bool(row['enabled'])
             w['run_count'] = row['run_count']
             w['last_run'] = row['last_run']
-            w['deployed_to_edge'] = row['deployed_to_edge']
+            w['deployed_to_edge'] = bool(row['deployed_to_edge'])
             w['created_at'] = row['created_at']
             workflows.append(w)
         return workflows
@@ -237,10 +254,10 @@ class Storage:
             if w_rows:
                 w = json.loads(w_rows[0]['config']) if w_rows[0].get('config') else {}
                 w['id'] = w_rows[0]['id']
-                w['enabled'] = w_rows[0]['enabled']
+                w['enabled'] = bool(w_rows[0]['enabled'])
                 w['run_count'] = w_rows[0]['run_count']
                 w['last_run'] = w_rows[0]['last_run']
-                w['deployed_to_edge'] = w_rows[0]['deployed_to_edge']
+                w['deployed_to_edge'] = bool(w_rows[0]['deployed_to_edge'])
                 w['created_at'] = w_rows[0]['created_at']
                 return w
         return None
@@ -291,19 +308,22 @@ class Storage:
     # ── Script history ──
 
     def add_script_history(self, device_name: str, entry: dict):
+        # Allow 'script' or 'script_content' as key since main.py and original used 'script'
+        script_content = entry.get("script", entry.get("script_content", ""))
         self._execute('''
             INSERT INTO script_history (device_name, timestamp, script_content, description)
             VALUES (?, ?, ?, ?)
         ''', (
             device_name,
             entry.get("timestamp", datetime.now().isoformat()),
-            entry.get("script_content", ""),
+            script_content,
             entry.get("description", "")
         ), commit=True)
 
     def get_script_history(self, device_name: str) -> list:
+        # Alias script_content to script to match frontend and engine expectations
         rows = self._execute('''
-            SELECT timestamp, script_content, description 
+            SELECT timestamp, script_content as script, description 
             FROM script_history 
             WHERE device_name = ? 
             ORDER BY timestamp DESC LIMIT 10
