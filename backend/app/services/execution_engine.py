@@ -1,6 +1,10 @@
 import asyncio
 from datetime import datetime
 
+try:
+    from app.services.telegram_notify import notify as _notify
+except ImportError:
+    def _notify(*a, **kw): pass
 
 class ExecutionEngine:
     def __init__(self, storage, mqtt, check_interval: float = 5.0, camera_service=None):
@@ -92,6 +96,10 @@ class ExecutionEngine:
                     )
                     print(f"[Engine] {name} marked offline — heartbeat timeout")
                     self._fire_device_event_workflows(workflows, name, "offline", now)
+                    _notify(
+                        f"📡 Device Offline: {name}",
+                        f"{name} has gone offline (no heartbeat for >90s).",
+                    )
                 elif elapsed <= 90 and current_status == "offline":
                     # Device came back online
                     self.storage.update_device_field(name, "status", "online")
@@ -179,6 +187,11 @@ class ExecutionEngine:
         if result:
             self._last_triggered[workflow_id] = now
             self.storage.increment_workflow_run(workflow_id)
+            # Notify via Telegram
+            _notify(
+                f"⚡ Workflow: {workflow.get('name', 'Unnamed')}",
+                f"Automation triggered at {now.strftime('%H:%M:%S')}",
+            )
 
     def _execute_workflow_actions(self, workflow: dict) -> list:
         """Execute all actions in a workflow. Returns list of results."""

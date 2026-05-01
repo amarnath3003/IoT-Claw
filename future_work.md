@@ -16,7 +16,7 @@ Expanding the ecosystem beyond custom-flashed ESP32s.
 
 ## 🧠 3. Advanced AI & User Experience (UX)
 Making the system more intuitive and accessible.
-- **Local Voice Assistant:** Integrate a local wake-word engine (like Porcupine) and Speech-to-Text (STT) for hands-free AI interaction.
+- **Local Voice Assistant:** Integrate a local wake-word engine (like Porcupine) and Speech-to-Text (STT) for hands-free AI interaction. Pipeline: Porcupine wake-word ("Hey Claw") → `sounddevice` recording → `faster-whisper` STT → `run_chat()` AI agent → `pyttsx3` TTS response. Requires `PICOVOICE_ACCESS_KEY` in `.env`.
 - **Visual Workflow Builder:** A drag-and-drop node editor (similar to Node-RED or React Flow) for complex automation logic, providing a non-code alternative to MicroPython scripting.
 - **PWA & Native Notifications:** Convert the dashboard into a Progressive Web App (PWA) with Web Push Notifications for critical alerts (e.g., "Leak detected in kitchen").
 

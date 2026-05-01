@@ -69,22 +69,43 @@ export default function App() {
         </div>
 
         {/* Status pill */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '7px 14px',
-          borderRadius: 99,
-          border: '1px solid rgba(255,255,255,0.08)',
-          background: 'rgba(255,255,255,0.04)',
-        }}>
-          <div className={isConnected ? 'led-pulse' : 'led led-red'} />
-          <span style={{ fontSize: 12, color: isConnected ? '#22c55e' : '#f87171', fontWeight: 600 }}>
-            {isConnected ? 'System Online' : 'Offline'}
-          </span>
-          {isConnected && deviceCount > 0 && (
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>
-              · {deviceCount} device{deviceCount !== 1 ? 's' : ''}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Telegram alerts badge */}
+          <div
+            title="Telegram alerts: workflow triggers and device offline events are sent to your Telegram chat"
+            style={{
+              padding: '5px 11px',
+              borderRadius: 99,
+              border: '1px solid rgba(38,169,224,0.25)',
+              background: 'rgba(38,169,224,0.08)',
+              fontSize: 11,
+              color: '#26a9e0',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              cursor: 'default',
+            }}
+          >
+            <span style={{ fontSize: 13 }}>✈️</span> Telegram Alerts
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 14px',
+            borderRadius: 99,
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.04)',
+          }}>
+            <div className={isConnected ? 'led-pulse' : 'led led-red'} />
+            <span style={{ fontSize: 12, color: isConnected ? '#22c55e' : '#f87171', fontWeight: 600 }}>
+              {isConnected ? 'System Online' : 'Offline'}
             </span>
-          )}
+            {isConnected && deviceCount > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>
+                · {deviceCount} device{deviceCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
