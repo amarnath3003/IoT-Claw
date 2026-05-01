@@ -71,6 +71,7 @@ async def telemetry_cleanup():
 async def lifespan(app: FastAPI):
     # Startup
     camera_service.bind_loop(asyncio.get_running_loop())
+    engine.bind_loop(asyncio.get_running_loop())
     camera_service.ensure_registered()
     mqtt_host = os.getenv("MQTT_BROKER_HOST", "localhost")
     mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))

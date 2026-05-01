@@ -16,6 +16,10 @@ class ExecutionEngine:
         self._last_triggered: dict = {}
         self.cooldown_seconds = 60
         self._chat_triggers: dict = {}
+        self._loop = None
+
+    def bind_loop(self, loop):
+        self._loop = loop
 
     async def run(self):
         print("[Engine] Execution engine started.")
@@ -267,12 +271,11 @@ class ExecutionEngine:
         return results
 
     def _broadcast_state(self):
-        if self.ws_broadcast_fn:
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(self.ws_broadcast_fn({"type": "state", "data": self.storage.get_all_devices()}))
-            except RuntimeError:
-                pass
+        if self._loop and self._loop.is_running() and self.ws_broadcast_fn:
+            asyncio.run_coroutine_threadsafe(
+                self.ws_broadcast_fn({"type": "state", "data": self.storage.get_all_devices()}),
+                self._loop,
+            )
 
     def execute_device_action(self, device_name: str, command: str, source: str = "engine", workflow: dict = None) -> dict:
         devices = self.storage.get_all_devices()
