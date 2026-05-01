@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(engine.run())
     # Start Telegram bot (runs in background; no-ops gracefully if token missing)
     asyncio.create_task(
-        run_telegram_bot(run_chat, mqtt, storage, engine)
+        run_telegram_bot(run_chat, mqtt, storage, engine, manager.broadcast)
     )
     yield
     # Shutdown

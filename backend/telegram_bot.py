@@ -64,8 +64,7 @@ async def _send(client: httpx.AsyncClient, chat_id: int, text: str) -> None:
         text = text[len(chunk):]
         await _tg(client, "sendMessage",
                   chat_id=chat_id,
-                  text=chunk,
-                  parse_mode="Markdown")
+                  text=chunk)
 
 
 # ── Authorization ─────────────────────────────────────────────────────────────
@@ -97,8 +96,7 @@ async def _handle_start(client: httpx.AsyncClient, chat_id: int) -> None:
     # Use regular markdown (not MarkdownV2) for friendlier formatting
     await _tg(client, "sendMessage",
               chat_id=chat_id,
-              text=welcome.replace("\\!", "!").replace("\\.", "."),
-              parse_mode="Markdown")
+              text=welcome.replace("\\!", "!").replace("\\.", "."))
 
 
 async def _handle_clear(client: httpx.AsyncClient, chat_id: int) -> None:
@@ -132,6 +130,7 @@ async def _handle_message(
     mqtt,
     storage,
     engine,
+    broadcast_fn,
 ) -> None:
     """Process a user message: run through the AI agent, reply with result."""
 
@@ -148,6 +147,9 @@ async def _handle_message(
         result = await run_chat_fn(text, history, mqtt, storage, engine=engine)
         reply: str = result.get("reply") or "Done."
         tool_calls: list = result.get("tool_calls", [])
+
+        if broadcast_fn:
+            await broadcast_fn({"type": "state", "data": storage.get_all_devices()})
 
         # Append to per-chat history
         _histories[chat_id].append({"role": "user", "content": text})
@@ -172,7 +174,7 @@ async def _handle_message(
 
 # ── Polling loop ───────────────────────────────────────────────────────────────
 
-async def run_bot(run_chat_fn, mqtt, storage, engine) -> None:
+async def run_bot(run_chat_fn, mqtt, storage, engine, broadcast_fn=None) -> None:
     """
     Long-poll Telegram for updates and dispatch to handlers.
     Designed to run as an asyncio task alongside the FastAPI app.
@@ -250,7 +252,7 @@ async def run_bot(run_chat_fn, mqtt, storage, engine) -> None:
                     asyncio.create_task(
                         _handle_message(
                             client, chat_id, text,
-                            run_chat_fn, mqtt, storage, engine
+                            run_chat_fn, mqtt, storage, engine, broadcast_fn
                         )
                     )
 
