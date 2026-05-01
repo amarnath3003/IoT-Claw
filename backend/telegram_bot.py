@@ -42,7 +42,7 @@ _MAX_HISTORY = 30
 async def _tg(client: httpx.AsyncClient, method: str, **kwargs) -> dict:
     """Call a Telegram Bot API method."""
     try:
-        r = await client.post(f"{_BASE_URL}/{method}", json=kwargs, timeout=15)
+        r = await client.post(f"{_BASE_URL}/{method}", json=kwargs, timeout=40.0)
         return r.json()
     except Exception as exc:
         log.warning("Telegram API error (%s): %s", method, exc)
