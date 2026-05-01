@@ -7,16 +7,19 @@ Features:
   - Executes dynamic Python scripts pushed from the AI agent over MQTT
   - Handles direct ON/OFF device control via /set topic
   - Runs a local edge loop (calls loop() from the last pushed script every 100ms)
+  - Persists the last-received edge script to internal flash (survives power cycles)
+  - Syncs real-world time from NTP on every WiFi connect
 
 Setup:
   1. Flash MicroPython onto your ESP32: https://micropython.org/download/ESP32_GENERIC/
-  2. Edit WIFI_SSID, WIFI_PASS, MQTT_BROKER, DEVICE_ID below
+  2. Edit WIFI_SSID, WIFI_PASS, MQTT_BROKER, DEVICE_ID, TZ_OFFSET_HOURS below
   3. Upload this file as main.py using mpremote or Thonny
 """
 
 import network
 import time
 import json
+import ntptime
 from umqtt.simple import MQTTClient
 from machine import Pin
 
@@ -29,6 +32,7 @@ MQTT_PORT = 1883
 DEVICE_ID = "esp32_edge_1"   # unique per device
 TOPIC_BASE = "home/esp32/" + DEVICE_ID
 DISCOVERY_TOPIC = "home/discovery/" + DEVICE_ID
+TZ_OFFSET_HOURS = 5     # UTC+5:30 → use 5 (or 5.5). Adjust for your timezone.
 
 # Built-in status LED (GPIO 2 on most ESP32 dev boards)
 _status_led = Pin(2, Pin.OUT)
@@ -84,6 +88,12 @@ def connect_wifi():
     for _ in range(40):
         if wlan.isconnected():
             print(f"[WiFi] Connected: {wlan.ifconfig()[0]}")
+            # ── Sync time from NTP ────────────────────────────────────────────
+            try:
+                ntptime.settime()
+                print(f"[NTP] Time synced (UTC). Local offset: {TZ_OFFSET_HOURS}h")
+            except Exception as e:
+                print(f"[NTP] Sync failed (no internet?): {e}")
             return True
         _status_led.value(not _status_led.value())
         time.sleep(0.25)
@@ -102,11 +112,14 @@ def on_message(topic, msg):
         # Dynamic code injection — run the script and capture loop() if defined
         _edge_globals = {}
         try:
+            # ── Persist to flash so script survives power cycle ───────────────
+            with open("edge_logic.py", "w") as f:
+                f.write(msg)
             exec(msg, _edge_globals)
             _script_loaded = "loop" in _edge_globals
             status = {"status": "script_loaded", "has_loop": _script_loaded, "ok": True}
             mqtt.publish(TOPIC_BASE + "/state", json.dumps(status))
-            print(f"[Edge] Script loaded (loop={'yes' if _script_loaded else 'no'})")
+            print(f"[Edge] Script loaded & saved to flash (loop={'yes' if _script_loaded else 'no'})")
         except Exception as e:
             _script_loaded = False
             err = {"status": "script_error", "error": str(e), "ok": False}
@@ -161,7 +174,23 @@ PING_INTERVAL_MS      = 25_000   # MQTT keepalive
 HEARTBEAT_INTERVAL_MS = 30_000   # backend offline detection threshold is 90s
 TELEMETRY_INTERVAL_MS = 500      # sensor reading rate for sparkline charts
 
-# Optional: read ADC on pin 34 for telemetry (comment out if no sensor connected)
+# ── Restore last edge script from flash (survives power cycle) ────────────────
+try:
+    with open("edge_logic.py", "r") as f:
+        _saved_script = f.read()
+    print("[Edge] Restoring saved script from flash...")
+    exec(_saved_script, _edge_globals)
+    _script_loaded = "loop" in _edge_globals
+    mqtt.publish(TOPIC_BASE + "/state", json.dumps(
+        {"status": "script_loaded_from_flash", "has_loop": _script_loaded, "ok": True}
+    ))
+    print(f"[Edge] Script restored (loop={'yes' if _script_loaded else 'no'})")
+except OSError:
+    print("[Edge] No saved script found — waiting for AI agent to push one.")
+except Exception as e:
+    print(f"[Edge] Error restoring script: {e}")
+
+# ── Optional ADC telemetry (comment out if no sensor on pin 34) ──────────────
 try:
     from machine import ADC
     _adc = ADC(Pin(34))
