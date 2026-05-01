@@ -98,6 +98,11 @@ backend/captures/
 captures/
 data/
 logs/
+scratch_*.py
+backend/scratch_*.py
+*.db
+*.db-wal
+*.db-shm
 
 # ─── OS Generated Files ───
 .DS_Store
