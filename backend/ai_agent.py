@@ -717,7 +717,12 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
             return {"reply": f"Triggered workflow: {names}. Set OPENAI_API_KEY to enable full AI chat.", "tool_calls": []}
         return {"reply": "AI chat is disabled. Set OPENAI_API_KEY in backend/.env to enable natural-language control.", "tool_calls": []}
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    dynamic_prompt = SYSTEM_PROMPT
+    if mqtt and hasattr(mqtt, 'is_connected'):
+        state = "ONLINE" if mqtt.is_connected else "OFFLINE"
+        dynamic_prompt += f"\n\n[SYSTEM CONTEXT: The internal MQTT Broker is currently {state}. If it is OFFLINE, your device commands will be queued but they will not execute immediately. Make sure to politely inform the user if this happens.]"
+
+    messages = [{"role": "system", "content": dynamic_prompt}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 

@@ -25,7 +25,7 @@ const TABS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState('Dashboard')
   const [chatMessages, setChatMessages] = useState([INITIAL_MESSAGE])
-  const { deviceStates, isConnected, lastMessage } = useWebSocket('ws://127.0.0.1:8000/ws')
+  const { deviceStates, isConnected, brokerConnected, lastMessage } = useWebSocket('ws://127.0.0.1:8000/ws')
   const deviceCount = Object.keys(deviceStates).length
 
   return (
@@ -87,6 +87,25 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {/* ── BROKER OFFLINE BANNER ── */}
+      {isConnected && !brokerConnected && (
+        <div style={{
+          background: 'rgba(245, 158, 11, 0.1)',
+          borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
+          padding: '8px 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 10,
+          color: '#fbbf24',
+          fontSize: 13,
+          fontWeight: 600,
+          flexShrink: 0
+        }}>
+          <span>⚠️ MQTT Broker is Offline. Device commands will be queued for up to 60 seconds.</span>
+        </div>
+      )}
 
       {/* ── BODY ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>

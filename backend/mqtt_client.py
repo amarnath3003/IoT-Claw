@@ -12,6 +12,9 @@ class MQTTClient:
         self.client.on_message = self._on_message
         self.client.on_disconnect = self._on_disconnect
         self._loop = None  # Will be set to the asyncio event loop
+        self.is_connected = False
+        self._queue = []  # List of dicts: {"topic": str, "payload": str, "ts": datetime}
+        self.queue_ttl = 60  # seconds
 
     def connect(self, host="localhost", port=1883):
         self._loop = asyncio.get_event_loop()
@@ -33,6 +36,17 @@ class MQTTClient:
         print(f"[MQTT] Subscribed to {topic}")
 
     def publish(self, topic: str, payload: str) -> bool:
+        if not self.is_connected:
+            import datetime
+            self._queue.append({
+                "topic": topic,
+                "payload": payload,
+                "ts": datetime.datetime.now()
+            })
+            self.storage.add_log("warning", "mqtt", f"Broker offline. Queued command for {topic}", {"topic": topic, "payload": payload})
+            print(f"[MQTT] Broker offline. Queued: {topic} = {payload}")
+            return True # Pretend it succeeded so UI doesn't completely fail, but we'll try later.
+
         result = self.client.publish(topic, payload)
         ok = result.rc == mqtt_lib.MQTT_ERR_SUCCESS
         self.storage.add_log(
@@ -45,7 +59,32 @@ class MQTTClient:
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
+            self.is_connected = True
             print(f"[MQTT] Connected successfully")
+            
+            # Broadcast broker up status
+            if self._loop and self._loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    self.ws_broadcast_fn({"type": "broker_status", "connected": True}),
+                    self._loop
+                )
+
+            # Process the offline queue
+            import datetime
+            now = datetime.datetime.now()
+            processed = 0
+            dropped = 0
+            for item in self._queue:
+                if (now - item["ts"]).total_seconds() <= self.queue_ttl:
+                    client.publish(item["topic"], item["payload"])
+                    processed += 1
+                else:
+                    dropped += 1
+            self._queue.clear()
+            if processed > 0 or dropped > 0:
+                print(f"[MQTT] Flushed offline queue: {processed} sent, {dropped} dropped (TTL expired)")
+                self.storage.add_log("info", "mqtt", f"Flushed offline queue: {processed} sent, {dropped} dropped", {})
+
             # Re-subscribe to all known device topics from storage
             devices = self.storage.get_all_devices()
             for device_name, device_data in devices.items():
@@ -184,6 +223,14 @@ class MQTTClient:
             )
 
     def _on_disconnect(self, client, userdata, rc):
+        self.is_connected = False
+        # Broadcast broker down status
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self.ws_broadcast_fn({"type": "broker_status", "connected": False}),
+                self._loop
+            )
+            
         if rc != 0:
             print(f"[MQTT] Unexpected disconnect (rc={rc}). Reconnecting...")
             # paho loop_start handles automatic reconnection

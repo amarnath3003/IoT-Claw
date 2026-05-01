@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 export default function useWebSocket(url) {
   const [deviceStates, setDeviceStates] = useState({})
   const [isConnected, setIsConnected] = useState(false)
+  const [brokerConnected, setBrokerConnected] = useState(true)
   const [lastMessage, setLastMessage] = useState(null)
   const wsRef = useRef(null)
 
@@ -35,6 +36,8 @@ export default function useWebSocket(url) {
           setLastMessage(msg)
           if (msg.type === 'state') {
             setDeviceStates(msg.data)
+          } else if (msg.type === 'broker_status') {
+            setBrokerConnected(msg.connected)
           } else if (msg.type === 'device_update') {
             setDeviceStates(prev => {
               const updated = { ...prev }
@@ -64,5 +67,5 @@ export default function useWebSocket(url) {
     }
   }, [url])
 
-  return { deviceStates, isConnected, lastMessage }
+  return { deviceStates, isConnected, brokerConnected, lastMessage }
 }

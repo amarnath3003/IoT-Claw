@@ -239,8 +239,7 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 ### 4. Standardized MCP Protocol Implementation
 *   **Full MCP Server:** Move beyond custom JSON manifests to a formal Model Context Protocol implementation on the ESP32, allowing the hardware to be truly "agent-ready" for any compatible AI hub.
 
-### 5. Backend Reliability (Broker Reachability)
-*   **Self-Healing MQTT:** Implement better error handling and command queuing for when the MQTT broker is unreachable, providing the AI agent with clear feedback to share with the user.
+### ~~5. Backend Reliability (Broker Reachability)~~ ✅ Done
 
 ---
 
@@ -282,3 +281,13 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 **Success criteria:**
 > Pushing a script with `print("Hello from edge")` will instantly stream that text over MQTT and display it in the browser UI, eliminating the need for a physical USB serial connection for debugging.
+
+### Backend Reliability (Self-Healing MQTT)
+
+**Files changed:**
+- `backend/mqtt_client.py`: Added `is_connected` tracking and a time-to-live (TTL) offline command queue. Commands issued while Mosquitto is down are queued for up to 60 seconds and automatically flushed upon reconnection.
+- `frontend/src/hooks/useWebSocket.js` & `frontend/src/App.jsx`: UI now intercepts `broker_status` WebSocket events to display a "⚠️ MQTT Broker is Offline" warning banner.
+- `backend/ai_agent.py`: Dynamically injects `[SYSTEM CONTEXT: The internal MQTT Broker is currently OFFLINE]` into the system prompt so the AI can intelligently explain queue states to the user.
+
+**Success criteria:**
+> Stop the Mosquitto broker. The UI shows an amber warning. Ask the AI to turn on the lights; the AI replies that commands are queued because the broker is unreachable. Start the Mosquitto broker again; the queued commands execute immediately and the UI warning disappears.
