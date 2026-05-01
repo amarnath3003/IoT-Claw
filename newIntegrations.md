@@ -307,6 +307,22 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 ---
 
+## ✅ Implemented (2026-05-01) — Round 6
+
+**Feature 12 — Telegram AI Bot Integration:**
+- `backend/telegram_bot.py` — **new file**: Implements an async Telegram bot using long-polling and `httpx`.
+- `backend/main.py` — Integrated the bot into the FastAPI lifespan; added `/telegram/status` endpoint for configuration monitoring.
+- `backend/requirements.txt` — Added `httpx` dependency.
+
+**Bot Capabilities:**
+- 🤖 **Natural Language Control:** Everything possible in the web console (device control, workflows, scripting) works via Telegram.
+- 💬 **Contextual Conversations:** Maintains individual chat history (last 30 messages) per user.
+- ⚙️ **Transparent Execution:** Displays tool-call badges (e.g., `⚙ control_device`) below AI replies.
+- 🔒 **Security:** Supports `TELEGRAM_CHAT_ID` whitelisting to restrict access to the owner only.
+- 📡 **Status Monitoring:** `/status` command for a quick overview of all device states with emoji indicators.
+
+---
+
 ## 📊 Summary of Built Features & Real-World Utility
 
 | Feature | Real-World Use Case & Benefits |
@@ -321,4 +337,5 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 | **Device Health Monitoring** | **Reliability Monitoring:** Instantly know if a device has been unplugged or lost connection, preventing "silent failures" in critical monitoring systems. |
 | **Self-Healing MQTT Queuing** | **Robust Control:** If your network is flickering, commands aren't lost. They wait until the connection is back, ensuring your intent is eventually executed. |
 | **Edge Persistence (Local Memory)** | **Power-Cut Resilience:** If a device loses power, it remembers its logic and resumes its automation immediately upon reboot without needing the central server. |
+| **Telegram AI Bot Integration** | **Anywhere Control:** Mirrors the AI chat console to Telegram. Manage your entire home via natural language from any device with Telegram, featuring per-user history and tool-call feedback. |
 
