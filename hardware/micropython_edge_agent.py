@@ -111,11 +111,86 @@ def edge_print(*args, **kwargs):
     except Exception:
         pass
 
+# ── MCP Tool Dispatcher ───────────────────────────────────────────────────────
+
+def _mcp_respond(req_id, result=None, error=None):
+    """Publish a JSON-RPC 2.0 response on the /mcp/response topic."""
+    if error:
+        resp = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": error}}
+    else:
+        resp = {"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": str(result)}]}}
+    mqtt.publish(TOPIC_BASE + "/mcp/response", json.dumps(resp))
+
+def handle_mcp_request(raw):
+    """Parse and dispatch an MCP JSON-RPC 2.0 request."""
+    from machine import Pin, ADC
+    try:
+        req = json.loads(raw)
+    except Exception:
+        return  # malformed JSON — silently drop
+
+    req_id = req.get("id", "0")
+    method = req.get("method", "")
+    params = req.get("params", {})
+
+    if method == "tools/list":
+        _mcp_respond(req_id, json.dumps(CAPABILITIES))
+        return
+
+    if method != "tools/call":
+        _mcp_respond(req_id, error=f"Unknown method: {method}")
+        return
+
+    tool_name = params.get("name", "")
+    args      = params.get("arguments", {})
+
+    try:
+        if tool_name == "set_led":
+            state = str(args.get("state", "OFF")).upper()
+            _status_led.value(1 if state == "ON" else 0)
+            _mcp_respond(req_id, f"LED set to {state}")
+
+        elif tool_name == "set_pin":
+            pin_num = int(args.get("pin", 2))
+            state   = str(args.get("state", "OFF")).upper()
+            pin = Pin(pin_num, Pin.OUT)
+            pin.value(1 if state == "ON" else 0)
+            _mcp_respond(req_id, f"Pin {pin_num} set to {state}")
+
+        elif tool_name == "read_adc":
+            pin_num = int(args.get("pin", 34))
+            adc = ADC(Pin(pin_num))
+            adc.atten(ADC.ATTN_11DB)
+            val = adc.read()
+            _mcp_respond(req_id, json.dumps({"pin": pin_num, "value": val, "voltage_mv": int(val * 3300 / 4095)}))
+
+        elif tool_name == "exec_script":
+            global _edge_globals, _script_loaded
+            code = args.get("code", "")
+            _edge_globals = {"print": edge_print}
+            exec(code, _edge_globals)
+            _script_loaded = "loop" in _edge_globals
+            with open("edge_logic.py", "w") as f:
+                f.write(code)
+            _mcp_respond(req_id, json.dumps({"ok": True, "has_loop": _script_loaded}))
+
+        else:
+            _mcp_respond(req_id, error=f"Unknown tool: {tool_name}")
+
+    except Exception as e:
+        _mcp_respond(req_id, error=str(e))
+
+
 def on_message(topic, msg):
     global _edge_globals, _script_loaded
     topic = topic.decode()
     msg = msg.decode().strip()
     print(f"[MQTT] {topic} = {msg[:80]}")
+
+    # ── MCP tool-call protocol ────────────────────────────────────────────────
+    if topic == TOPIC_BASE + "/mcp/request":
+        handle_mcp_request(msg)
+        return
 
     if topic == TOPIC_BASE + "/script":
         # Dynamic code injection — run the script and capture loop() if defined
@@ -167,7 +242,8 @@ print(f"[MCP] Published capability manifest to {DISCOVERY_TOPIC}")
 # Subscribe to control topics
 mqtt.subscribe(TOPIC_BASE + "/set")
 mqtt.subscribe(TOPIC_BASE + "/script")
-print(f"[MQTT] Subscribed to {TOPIC_BASE}/set and /script")
+mqtt.subscribe(TOPIC_BASE + "/mcp/request")
+print(f"[MQTT] Subscribed to {TOPIC_BASE}/set, /script and /mcp/request")
 
 # Slow heartbeat blink = ready
 _status_led.on()
@@ -249,6 +325,7 @@ while True:
             mqtt.connect()
             mqtt.subscribe(TOPIC_BASE + "/set")
             mqtt.subscribe(TOPIC_BASE + "/script")
+            mqtt.subscribe(TOPIC_BASE + "/mcp/request")
             mqtt.publish(DISCOVERY_TOPIC, json.dumps(CAPABILITIES), retain=True)
         except Exception as re:
             print(f"[MQTT] Reconnect failed: {re}")

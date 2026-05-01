@@ -15,6 +15,7 @@ class MQTTClient:
         self.is_connected = False
         self._queue = []  # List of dicts: {"topic": str, "payload": str, "ts": datetime}
         self.queue_ttl = 60  # seconds
+        self._mcp_pending = {}  # injected from MCPClient: req_id -> asyncio.Future
 
     def connect(self, host="localhost", port=1883):
         self._loop = asyncio.get_event_loop()
@@ -29,6 +30,10 @@ class MQTTClient:
     def disconnect(self):
         self.client.loop_stop()
         self.client.disconnect()
+
+    def set_mcp_response_registry(self, pending: dict):
+        """Inject the MCPClient's pending-futures dict for response routing."""
+        self._mcp_pending = pending
 
     def subscribe(self, topic: str):
         self.client.subscribe(topic)
@@ -100,6 +105,9 @@ class MQTTClient:
             # Edge Console: stream print() statements from devices
             client.subscribe("home/+/console")
             print("[MQTT] Subscribed to home/+/console")
+            # MCP: subscribe to all device tool-call responses
+            client.subscribe("home/+/mcp/response")
+            print("[MQTT] Subscribed to home/+/mcp/response")
         else:
             print(f"[MQTT] Connection failed with code {rc}")
 
@@ -121,6 +129,11 @@ class MQTTClient:
         # Edge Console: route device print statements to websocket
         if topic.endswith("/console"):
             self._handle_console(topic, payload)
+            return
+
+        # MCP response: resolve waiting async future
+        if topic.endswith("/mcp/response"):
+            self._handle_mcp_response(payload)
             return
 
         # Try to parse payload as JSON or number
@@ -211,7 +224,7 @@ class MQTTClient:
             if data.get("topic_base") == topic_base:
                 device_name = name
                 break
-        
+
         if device_name and self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(
                 self.ws_broadcast_fn({
@@ -221,6 +234,19 @@ class MQTTClient:
                 }),
                 self._loop
             )
+
+    def _handle_mcp_response(self, payload: str):
+        """Resolve a pending MCPClient future when a /mcp/response arrives."""
+        try:
+            data = __import__('json').loads(payload)
+        except Exception:
+            return
+        req_id = data.get("id")
+        if req_id and req_id in self._mcp_pending:
+            fut = self._mcp_pending.get(req_id)
+            if fut and not fut.done() and self._loop and self._loop.is_running():
+                result = data.get("result") or data.get("error", {})
+                self._loop.call_soon_threadsafe(fut.set_result, result)
 
     def _on_disconnect(self, client, userdata, rc):
         self.is_connected = False

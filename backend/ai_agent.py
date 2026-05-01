@@ -386,6 +386,24 @@ Only use on devices with type 'micropython_edge_agent'.""",
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "call_hardware_tool",
+            "description": """Invoke a native MCP hardware tool directly on an edge device. Use this instead of push_script for simple, discrete hardware actions like reading a sensor or toggling a pin.
+Available built-in tools: set_led (state: ON|OFF), set_pin (pin: int, state: ON|OFF), read_adc (pin: int), exec_script (code: str).
+Always call get_device_capabilities first to discover the device's tools.""",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string", "description": "Target edge device name"},
+                    "tool_name": {"type": "string", "description": "MCP tool name, e.g. set_led, set_pin, read_adc"},
+                    "arguments": {"type": "object", "description": "Tool arguments as a JSON object, e.g. {\"pin\": 5, \"state\": \"ON\"}"}
+                },
+                "required": ["device_name", "tool_name"]
+            }
+        }
     }
 ]
 
@@ -676,6 +694,16 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         logs = storage.get_logs(limit=limit)
         return {"logs": logs, "count": len(logs)}
 
+    async def call_hardware_tool_fn(device_name: str, tool_name: str, arguments: dict = None) -> dict:
+        """Call a native MCP tool on an edge device and return the result."""
+        # Import here to avoid circular dependency; mcp is already wired in main.py
+        # We call the REST endpoint logic directly via the mcp_client module
+        from mcp_client import MCPClient
+        _mcp = MCPClient(mqtt=mqtt, storage=storage)
+        mqtt.set_mcp_response_registry(_mcp.pending)
+        result = await _mcp.call_tool(device_name, tool_name, arguments or {})
+        return result
+
     return {
         "control_device": control_device,
         "blink_device": blink_device,
@@ -695,6 +723,7 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         "push_script_group": push_script_group_fn,
         "rollback_script": rollback_script_fn,
         "get_device_capabilities": get_device_capabilities_fn,
+        "call_hardware_tool": call_hardware_tool_fn,
     }
 
 
@@ -761,7 +790,12 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                     print(f"[AI] Tool: {tool_name} args={tool_args}")
 
                     if tool_name in dispatch:
-                        result = dispatch[tool_name](**tool_args)
+                        fn = dispatch[tool_name]
+                        import inspect
+                        if inspect.iscoroutinefunction(fn):
+                            result = await fn(**tool_args)
+                        else:
+                            result = fn(**tool_args)
                     else:
                         result = {"error": f"Unknown tool: {tool_name}"}
 

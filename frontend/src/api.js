@@ -55,6 +55,9 @@ export const getScriptHistory = (name) =>
 export const rollbackScript = (name, index) =>
   api.post(`/devices/${encodeURIComponent(name)}/scripts/${index}/rollback`)
 
+export const callMcpTool = (name, tool, args = {}) =>
+  api.post(`/devices/${encodeURIComponent(name)}/mcp/call`, { tool, arguments: args })
+
 export const getTelemetryExportUrl = (name) =>
   `${API_BASE}/devices/${encodeURIComponent(name)}/telemetry/export`
 

@@ -236,8 +236,7 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 ### ~~3. Interactive Edge Console~~ ✅ Done
 
-### 4. Standardized MCP Protocol Implementation
-*   **Full MCP Server:** Move beyond custom JSON manifests to a formal Model Context Protocol implementation on the ESP32, allowing the hardware to be truly "agent-ready" for any compatible AI hub.
+### ~~4. Standardized MCP Protocol Implementation~~ ✅ Done
 
 ### ~~5. Backend Reliability (Broker Reachability)~~ ✅ Done
 
@@ -291,3 +290,17 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 **Success criteria:**
 > Stop the Mosquitto broker. The UI shows an amber warning. Ask the AI to turn on the lights; the AI replies that commands are queued because the broker is unreachable. Start the Mosquitto broker again; the queued commands execute immediately and the UI warning disappears.
+
+### Standardized MCP Protocol Implementation
+
+**Files changed:**
+- `hardware/micropython_edge_agent.py`: Added `handle_mcp_request()` dispatcher, `_mcp_respond()` helper, native tools (`set_led`, `set_pin`, `read_adc`, `exec_script`, `tools/list`). Subscribed to `TOPIC_BASE/mcp/request` on boot and reconnect.
+- `backend/mcp_client.py` — **new file**: `MCPClient` class with `call_tool()` / `list_tools()` async methods. Maintains a pending-futures registry keyed by JSON-RPC `id` for response correlation with 5s timeout.
+- `backend/mqtt_client.py`: Subscribes to `home/+/mcp/response`, routes responses through `_handle_mcp_response()` which resolves the correct pending `asyncio.Future`.
+- `backend/main.py`: Instantiates `MCPClient`, links its pending registry, adds `POST /devices/{name}/mcp/call` REST endpoint.
+- `backend/ai_agent.py`: Added `call_hardware_tool` AI tool + made the dispatch loop async-aware (`inspect.iscoroutinefunction`).
+- `frontend/src/api.js`: Added `callMcpTool()` API call.
+- `frontend/src/components/DeviceCard.jsx`: Added `McpToolsPanel` component and "🔧 Tools" toggle button for edge devices.
+
+**Success criteria:**
+> Boot the ESP32. Open the Device Card. Click "🔧 Tools". See `set_led`, `read_adc`, `set_pin` as interactive buttons. Click ► Run on `set_led` with state `ON` and watch the hardware LED light up in <200ms with a JSON-RPC response displayed inline.

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript, getTelemetryExportUrl } from '../api'
+import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript, getTelemetryExportUrl, callMcpTool } from '../api'
 import EdgeConsole from './EdgeConsole'
 
 /* ── Resolve a colorful emoji icon + bg color from name + type ── */
@@ -165,6 +165,95 @@ function ScriptHistoryDrawer({ name, onClose }) {
   )
 }
 
+/* ── MCP Tools Panel ── */
+function McpToolsPanel({ deviceName, capabilities }) {
+  const tools = capabilities || []
+  const [args, setArgs] = useState({})      // { toolName: { paramKey: value } }
+  const [results, setResults] = useState({}) // { toolName: result string }
+  const [calling, setCalling] = useState(null)
+
+  const call = async (toolName) => {
+    setCalling(toolName)
+    try {
+      const r = await callMcpTool(deviceName, toolName, args[toolName] || {})
+      const text = r.data?.result?.content?.[0]?.text ?? JSON.stringify(r.data?.result ?? r.data, null, 2)
+      setResults(prev => ({ ...prev, [toolName]: text }))
+    } catch (e) {
+      setResults(prev => ({ ...prev, [toolName]: `❌ ${e.response?.data?.detail || e.message}` }))
+    } finally {
+      setCalling(null)
+    }
+  }
+
+  if (tools.length === 0) return (
+    <div style={{ color: 'var(--text-muted)', fontSize: 12, fontStyle: 'italic' }}>
+      No MCP tools in manifest yet. Reboot the device to publish capabilities.
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {tools.map(tool => (
+        <div key={tool.name} style={{
+          background: 'rgba(99,102,241,0.05)',
+          border: '1px solid rgba(99,102,241,0.15)',
+          borderRadius: 8,
+          padding: '10px 12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(99,102,241,0.9)' }}>{tool.name}</span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 8 }}>{tool.description}</span>
+            </div>
+            <button
+              onClick={() => call(tool.name)}
+              disabled={calling === tool.name}
+              style={{ all: 'unset', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                color: '#fff', padding: '3px 10px', borderRadius: 6,
+                background: calling === tool.name ? 'rgba(99,102,241,0.4)' : 'rgba(99,102,241,0.7)' }}
+            >
+              {calling === tool.name ? '⏳' : '► Run'}
+            </button>
+          </div>
+
+          {/* Auto-generated param inputs */}
+          {tool.params && Object.entries(tool.params).map(([key, hint]) => (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <label style={{ fontSize: 10, color: 'var(--text-dim)', minWidth: 40, fontFamily: 'JetBrains Mono, monospace' }}>{key}</label>
+              <input
+                style={{
+                  flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 4, padding: '3px 6px', fontSize: 11, color: 'var(--text-main)',
+                  fontFamily: 'JetBrains Mono, monospace', outline: 'none'
+                }}
+                placeholder={Array.isArray(hint) ? hint.join(' | ') : String(hint)}
+                value={(args[tool.name] || {})[key] || ''}
+                onChange={e => setArgs(prev => ({
+                  ...prev,
+                  [tool.name]: { ...(prev[tool.name] || {}), [key]: e.target.value }
+                }))}
+              />
+            </div>
+          ))}
+
+          {/* Result */}
+          {results[tool.name] && (
+            <pre style={{
+              marginTop: 6, padding: '6px 8px', borderRadius: 6,
+              background: 'rgba(0,0,0,0.4)', fontSize: 10,
+              color: results[tool.name].startsWith('❌') ? '#f87171' : '#86efac',
+              fontFamily: 'JetBrains Mono, monospace', overflowX: 'auto', whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all', margin: 0
+            }}>
+              {results[tool.name]}
+            </pre>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function DeviceCard({ name, data, wsMessages }) {
   const [toggling, setToggling]         = useState(false)
   const [previewTick, setPreviewTick]   = useState(Date.now())
@@ -172,6 +261,7 @@ export default function DeviceCard({ name, data, wsMessages }) {
   const [telemetry, setTelemetry]       = useState([])
   const [showHistory, setShowHistory]   = useState(false)
   const [showConsole, setShowConsole]   = useState(false)
+  const [showTools, setShowTools]       = useState(false)
 
   const statusStr   = String(data.status ?? '').toUpperCase()
   const isOffline   = statusStr === 'OFFLINE'
@@ -327,6 +417,9 @@ export default function DeviceCard({ name, data, wsMessages }) {
                   <button className="history-btn" onClick={() => setShowConsole(!showConsole)} style={{ marginLeft: 4 }}>
                     💻 Console
                   </button>
+                  <button className="history-btn" onClick={() => setShowTools(!showTools)} style={{ marginLeft: 4, borderColor: 'rgba(99,102,241,0.3)' }}>
+                    🔧 Tools
+                  </button>
                 </>
               )}
             </div>
@@ -439,6 +532,22 @@ export default function DeviceCard({ name, data, wsMessages }) {
         {/* ── Edge Console ── */}
         {isEdge && showConsole && (
           <EdgeConsole deviceName={name} wsMessages={wsMessages} />
+        )}
+
+        {/* ── MCP Tools Panel ── */}
+        {isEdge && showTools && (
+          <div style={{
+            background: 'rgba(99,102,241,0.04)',
+            border: '1px solid rgba(99,102,241,0.15)',
+            borderRadius: 8,
+            padding: '10px 12px',
+            marginTop: 4
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.8)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+              🔧 MCP Native Tools
+            </div>
+            <McpToolsPanel deviceName={name} capabilities={data.capabilities} />
+          </div>
         )}
       </div>
     </>

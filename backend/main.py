@@ -16,6 +16,7 @@ from storage import Storage
 from execution_engine import ExecutionEngine
 from security_camera import SecurityCameraSimulator
 from edge_compiler import EdgeCompiler
+from mcp_client import MCPClient
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -50,6 +51,9 @@ mqtt = MQTTClient(storage=storage, ws_broadcast_fn=manager.broadcast)
 camera_service = SecurityCameraSimulator(storage=storage, ws_broadcast_fn=manager.broadcast)
 engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval, camera_service=camera_service)
 edge_compiler = EdgeCompiler(storage=storage)
+mcp = MCPClient(mqtt=mqtt, storage=storage)
+# Link MCPClient's pending registry into the MQTT client for response routing
+mqtt.set_mcp_response_registry(mcp.pending)
 
 
 @asynccontextmanager
@@ -195,6 +199,30 @@ async def get_script_history(name: str):
     if name not in storage.get_all_devices():
         raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
     return storage.get_script_history(name)
+
+
+@app.post("/devices/{name}/mcp/call")
+async def mcp_tool_call(name: str, body: dict):
+    """Invoke a native MCP tool on an edge device and await the response."""
+    device = storage.get_all_devices().get(name)
+    if not device:
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    if device.get("type") != "micropython_edge_agent":
+        raise HTTPException(status_code=400, detail="MCP tool calls are only supported on micropython_edge_agent devices")
+
+    tool_name = body.get("tool")
+    arguments = body.get("arguments", {})
+    if not tool_name:
+        raise HTTPException(status_code=400, detail="'tool' field is required")
+
+    result = await mcp.call_tool(name, tool_name, arguments)
+    storage.add_log(
+        "info" if "error" not in result else "error",
+        "mcp",
+        f"MCP call {tool_name} on {name}",
+        {"device": name, "tool": tool_name, "result": result}
+    )
+    return {"device": name, "tool": tool_name, "result": result}
 
 
 @app.post("/devices/{name}/scripts/{index}/rollback")
