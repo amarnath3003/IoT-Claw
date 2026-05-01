@@ -5,6 +5,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from app.services.telegram_notify import notify as _notify
+except ImportError:
+    def _notify(*a, **kw): pass
+
 
 CAMERA_DEVICE_NAME = os.getenv("SECURITY_CAMERA_DEVICE_NAME", "laptop_security_camera")
 CAMERA_TOPIC_BASE = os.getenv("SECURITY_CAMERA_TOPIC_BASE", "simulator/laptop_security_camera")
@@ -228,20 +233,13 @@ class SecurityCameraSimulator:
             return
 
         try:
-            import requests
-
             detected = ", ".join(sorted({item["type"] for item in detections}))
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            caption = f"iotClaw security alert\nDetected: {detected}\nTime: {timestamp}"
-            url = f"https://api.telegram.org/bot{self.telegram_token}/sendPhoto"
-            with open(snapshot, "rb") as photo:
-                response = requests.post(
-                    url,
-                    data={"chat_id": self.telegram_chat_id, "caption": caption},
-                    files={"photo": photo},
-                    timeout=15,
-                )
-            response.raise_for_status()
+            _notify(
+                title="🚨 Security Camera Alert",
+                body=f"Detected: {detected}\nTime: {timestamp}",
+                photo_path=snapshot
+            )
             self.storage.add_log("success", "camera", "Telegram security alert sent", {"snapshot": snapshot})
         except Exception as exc:
             self.storage.add_log("error", "camera", "Failed to send Telegram alert", {"error": str(exc)})

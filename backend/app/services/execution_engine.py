@@ -101,7 +101,6 @@ class ExecutionEngine:
                         f"{name} has gone offline (no heartbeat for >90s).",
                     )
                 elif elapsed <= 90 and current_status == "offline":
-                    # Device came back online
                     self.storage.update_device_field(name, "status", "online")
                     self.storage.add_log(
                         "success", "engine",
@@ -109,6 +108,10 @@ class ExecutionEngine:
                         {"device": name}
                     )
                     self._fire_device_event_workflows(workflows, name, "online", now)
+                    _notify(
+                        f"✅ Device Online: {name}",
+                        f"Device '{name}' has reconnected and is sending heartbeats again.",
+                    )
             except Exception:
                 pass
 
@@ -187,10 +190,25 @@ class ExecutionEngine:
         if result:
             self._last_triggered[workflow_id] = now
             self.storage.increment_workflow_run(workflow_id)
+            
+            # Format a nice description of what happened
+            action_descriptions = []
+            for r in result:
+                if "success" in r:
+                    action_descriptions.append(f"• Turned {r.get('command', '')} {r.get('device', '')}")
+                elif "brightness" in r:
+                    action_descriptions.append(f"• Set {r.get('device', '')} brightness to {r.get('brightness', '')}%")
+                elif "action_type" in r and r["action_type"] == "camera_monitor":
+                    action_descriptions.append(f"• Turned {r.get('command', '')} camera monitor ({r.get('device', '')})")
+                elif "log" in r:
+                    action_descriptions.append(f"• Logged: {r.get('log', '')}")
+            
+            actions_str = "\n".join(action_descriptions) if action_descriptions else "• No actions executed"
+            
             # Notify via Telegram
             _notify(
-                f"⚡ Workflow: {workflow.get('name', 'Unnamed')}",
-                f"Automation triggered at {now.strftime('%H:%M:%S')}",
+                f"⚡ Workflow Fired: {workflow.get('name', 'Unnamed')}",
+                f"Automation triggered at {now.strftime('%H:%M:%S')}\n\n<b>Actions Taken:</b>\n{actions_str}",
             )
 
     def _execute_workflow_actions(self, workflow: dict) -> list:
