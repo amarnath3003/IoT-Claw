@@ -230,9 +230,7 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 ## 🚀 3. Remaining Roadmap (Yet to be Built)
 
-### 1. Phase 4: Edge Agent Migration (Latency-Free Automations)
-*   **Workflow Compiler:** A logic layer that takes a visual workflow (e.g., "If Temp > 30 then Turn ON Fan") and converts it into a MicroPython `loop()` function.
-*   **"Deploy to Edge" Button:** Add a button to the `WorkflowEditor` UI that pushes the compiled script to the ESP32. This reduces automation latency from ~5s (backend poll) to <100ms (on-device).
+### ~~1. Phase 4: Edge Agent Migration (Latency-Free Automations)~~ ✅ Done
 
 ### ~~2. Advanced Structured Local Memory~~ ✅ Done
 
@@ -261,3 +259,15 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 **Success criteria:**
 > Push a looping script to the device via AI chat. Unplug the ESP32. Plug it back in. The automation resumes automatically within seconds of boot — no backend, no re-push needed.
+
+### Edge Agent Migration (Workflow Compiler)
+
+**Files changed:**
+- `backend/edge_compiler.py` — **new file**: Implements the `EdgeCompiler` which takes a JSON workflow and generates a `loop()` function in MicroPython. It translates "sensor" triggers into `_adc.read()` conditions and generates `mqtt.publish()` actions with a cooldown mechanism.
+- `backend/main.py` — added `POST /workflows/{workflow_id}/deploy` to call the compiler, publish the script to the device, and save the deployed status to storage.
+- `backend/execution_engine.py` — modified `_evaluate_all` to **skip** evaluating workflows that have `deployed_to_edge = True` to prevent duplicate firing.
+- `frontend/src/api.js` — added `deployWorkflowToEdge` API call.
+- `frontend/src/components/WorkflowList.jsx` — added a **⚡ Deploy to Edge** button for sensor-triggered workflows, and a `⚡ EDGE` badge to visually indicate hardware-deployed automations.
+
+**Success criteria:**
+> Create a workflow in the UI ("If Sensor ADC > 2000, Turn ON Light"). Click "⚡ Deploy to Edge". The backend compiles it to Python, pushes it to the ESP32's internal memory via MQTT, and the automation now executes locally on the hardware in <100ms.

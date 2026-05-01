@@ -40,6 +40,9 @@ export const toggleWorkflow = (id) =>
 export const runWorkflow = (id) =>
   api.post(`/workflows/${id}/run`)
 
+export const deployWorkflowToEdge = (id) =>
+  api.post(`/workflows/${id}/deploy`)
+
 export const deleteWorkflow = (id) =>
   api.delete(`/workflows/${id}`)
 

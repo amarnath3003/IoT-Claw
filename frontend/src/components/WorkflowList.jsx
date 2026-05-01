@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { deleteWorkflow, runWorkflow, toggleWorkflow } from '../api'
+import { deleteWorkflow, runWorkflow, toggleWorkflow, deployWorkflowToEdge } from '../api'
 
 function summarizeTrigger(trigger = {}) {
   if (trigger.type === 'chat')     return `Chat phrase: "${trigger.code || ''}"`
@@ -12,6 +12,21 @@ const ACTION_ICON  = { device: '⏻', brightness: '◑', camera_monitor: '⊙', 
 
 export default function WorkflowList({ workflows, onChanged }) {
   const [runningId, setRunningId] = useState(null)
+  const [deployingId, setDeployingId] = useState(null)
+
+  const handleDeploy = async (id, name) => {
+    setDeployingId(id)
+    try { 
+      await deployWorkflowToEdge(id); 
+      alert(`Workflow "${name}" deployed to edge successfully!`);
+      onChanged?.() 
+    }
+    catch (e) { 
+      alert(`Deploy failed: ${e.response?.data?.detail || e.message}`); 
+      console.error('Failed to deploy workflow:', e) 
+    }
+    finally { setDeployingId(null) }
+  }
 
   const handleDelete = async (id, name) => {
     if (!confirm(`Delete workflow "${name}"?`)) return
@@ -83,6 +98,11 @@ export default function WorkflowList({ workflows, onChanged }) {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  {wf.deployed_to_edge && (
+                    <span className="neu-badge neu-badge-accent" title={`Deployed to ${wf.target_edge_device}`}>
+                      ⚡ EDGE
+                    </span>
+                  )}
                   <span className="neu-badge neu-badge-accent" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
                     {trigIcon} {trigType.toUpperCase()}
                   </span>
@@ -128,33 +148,46 @@ export default function WorkflowList({ workflows, onChanged }) {
               )}
 
               {/* ── Action buttons ── */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
-                <button
-                  id={`toggle-wf-${wf.id}`}
-                  onClick={() => handleToggle(wf.id)}
-                  className="neu-btn"
-                  style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600 }}
-                >
-                  {wf.enabled ? 'Disable' : 'Enable'}
-                </button>
-                <button
-                  id={`run-wf-${wf.id}`}
-                  onClick={() => handleRun(wf.id)}
-                  disabled={isRunning}
-                  className="neu-btn-primary"
-                  style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600 }}
-                >
-                  {isRunning ? '⟳ Running…' : '▶ Run'}
-                </button>
-                <button
-                  id={`delete-wf-${wf.id}`}
-                  onClick={() => handleDelete(wf.id, wf.name)}
-                  className="neu-btn-danger neu-btn-sm"
-                  title="Delete workflow"
-                  style={{ fontSize: 14 }}
-                >
-                  ✕
-                </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    id={`toggle-wf-${wf.id}`}
+                    onClick={() => handleToggle(wf.id)}
+                    className="neu-btn"
+                    style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600 }}
+                  >
+                    {wf.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                  <button
+                    id={`run-wf-${wf.id}`}
+                    onClick={() => handleRun(wf.id)}
+                    disabled={isRunning}
+                    className="neu-btn-primary"
+                    style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600 }}
+                  >
+                    {isRunning ? '⟳ Running…' : '▶ Run'}
+                  </button>
+                  <button
+                    id={`delete-wf-${wf.id}`}
+                    onClick={() => handleDelete(wf.id, wf.name)}
+                    className="neu-btn-danger neu-btn-sm"
+                    title="Delete workflow"
+                    style={{ fontSize: 14 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                {trigType === 'sensor' && (
+                  <button
+                    id={`deploy-wf-${wf.id}`}
+                    onClick={() => handleDeploy(wf.id, wf.name)}
+                    disabled={deployingId === wf.id}
+                    className="neu-btn"
+                    style={{ padding: '8px 0', fontSize: 12, fontWeight: 600, border: '1px solid rgba(26, 77, 255, 0.5)' }}
+                  >
+                    {deployingId === wf.id ? '⚡ Deploying…' : '⚡ Deploy to Edge'}
+                  </button>
+                )}
               </div>
             </div>
           )

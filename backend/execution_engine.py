@@ -55,6 +55,8 @@ class ExecutionEngine:
         for workflow in workflows:
             if not workflow.get("enabled", True):
                 continue
+            if workflow.get("deployed_to_edge", False):
+                continue
             try:
                 trigger = workflow.get("trigger", {})
                 trigger_type = trigger.get("type", "sensor")

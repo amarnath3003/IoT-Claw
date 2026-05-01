@@ -15,6 +15,7 @@ from mqtt_client import MQTTClient
 from storage import Storage
 from execution_engine import ExecutionEngine
 from security_camera import SecurityCameraSimulator
+from edge_compiler import EdgeCompiler
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -48,6 +49,7 @@ storage = Storage(storage_file)
 mqtt = MQTTClient(storage=storage, ws_broadcast_fn=manager.broadcast)
 camera_service = SecurityCameraSimulator(storage=storage, ws_broadcast_fn=manager.broadcast)
 engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval, camera_service=camera_service)
+edge_compiler = EdgeCompiler(storage=storage)
 
 
 @asynccontextmanager
@@ -263,6 +265,42 @@ async def run_workflow(workflow_id: str):
     storage.add_log("success", "api", f"Manually ran workflow: {workflow.get('name')}", {"workflow_id": workflow_id})
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return {"status": "ran", "workflow_id": workflow_id, "result": result}
+
+
+@app.post("/workflows/{workflow_id}/deploy")
+async def deploy_workflow(workflow_id: str):
+    """Compile a workflow and deploy it to an edge device."""
+    workflow = next((w for w in storage.get_workflows() if w.get("id") == workflow_id), None)
+    if not workflow:
+        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
+        
+    try:
+        target_device, compiled_script = edge_compiler.compile(workflow)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    device_data = storage.get_all_devices().get(target_device)
+    if not device_data:
+        raise HTTPException(status_code=404, detail=f"Device '{target_device}' not found")
+
+    topic = device_data["topic_base"] + "/script"
+    ok = mqtt.publish(topic, compiled_script)
+    
+    if ok:
+        # Save state to storage
+        storage._data["workflows"] = [
+            {**w, "deployed_to_edge": True, "target_edge_device": target_device} if w.get("id") == workflow_id else w
+            for w in storage.get_workflows()
+        ]
+        storage._save()
+        storage.add_script_history(target_device, {
+            "timestamp": __import__('datetime').datetime.now().isoformat(),
+            "script": compiled_script,
+            "description": f"[compiled] Workflow: {workflow.get('name')}"
+        })
+        storage.add_log("success", "api", f"Deployed workflow '{workflow.get('name')}' to {target_device}", {"workflow_id": workflow_id, "device": target_device})
+        
+    return {"status": "deployed" if ok else "mqtt_failed", "workflow_id": workflow_id, "device": target_device}
 
 
 @app.delete("/workflows/{workflow_id}")
