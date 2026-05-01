@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 import sqlite3
 
-from db import get_connection, init_db
+from app.core.db import get_connection, init_db
 
 class Storage:
     def __init__(self):
@@ -336,3 +336,27 @@ class Storage:
             SET run_count = run_count + 1, last_run = ? 
             WHERE id = ?
         ''', (datetime.now().isoformat(), workflow_id), commit=True)
+
+    # ── Camera Captures ──
+
+    def save_capture(self, device_name: str, timestamp: str, detected_types: list, image_data: bytes):
+        types_str = ",".join(detected_types)
+        self._execute('''
+            INSERT INTO captures (device_name, timestamp, detected_types, image_data)
+            VALUES (?, ?, ?, ?)
+        ''', (device_name, timestamp, types_str, sqlite3.Binary(image_data)), commit=True)
+
+    def get_captures(self, device_name: str, limit: int = 10) -> list:
+        rows = self._execute('''
+            SELECT id, timestamp, detected_types 
+            FROM captures 
+            WHERE device_name = ? 
+            ORDER BY timestamp DESC LIMIT ?
+        ''', (device_name, limit))
+        return list(rows)
+
+    def get_capture_image(self, capture_id: int) -> bytes:
+        rows = self._execute('SELECT image_data FROM captures WHERE id = ?', (capture_id,))
+        if rows and rows[0]['image_data']:
+            return rows[0]['image_data']
+        return None

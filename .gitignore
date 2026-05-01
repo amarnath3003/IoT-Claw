@@ -91,9 +91,9 @@ frontend/build/
 
 # ─── Project Specific Runtime Data ───
 backend/storage.json
-backend/*.db
-backend/*.db-wal
-backend/*.db-shm
+backend/**/*.db
+backend/**/*.db-wal
+backend/**/*.db-shm
 backend/captures/
 captures/
 data/

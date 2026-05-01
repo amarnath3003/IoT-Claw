@@ -187,6 +187,13 @@ class SecurityCameraSimulator:
         filename = f"security_camera_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
         path = self.capture_dir / filename
         cv2.imwrite(str(path), annotated)
+        
+        # Save to SQLite DB
+        ok, jpeg = cv2.imencode(".jpg", annotated, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        if ok and hasattr(self.storage, 'save_capture'):
+            detected_types = sorted({item["type"] for item in detections})
+            self.storage.save_capture(self.device_name, datetime.now().isoformat(), detected_types, jpeg.tobytes())
+
         return str(path)
 
     def _record_detection(self, detections, snapshot):

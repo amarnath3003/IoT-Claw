@@ -10,14 +10,14 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-from ai_agent import run_chat
-from mqtt_client import MQTTClient
-from storage import Storage
-from execution_engine import ExecutionEngine
-from security_camera import SecurityCameraSimulator
-from edge_compiler import EdgeCompiler
-from mcp_client import MCPClient
-from telegram_bot import run_bot as run_telegram_bot
+from app.services.ai_agent import run_chat
+from app.services.mqtt_client import MQTTClient
+from app.core.storage import Storage
+from app.services.execution_engine import ExecutionEngine
+from app.services.security_camera import SecurityCameraSimulator
+from app.services.edge_compiler import EdgeCompiler
+from app.services.mcp_client import MCPClient
+from app.services.telegram_bot import run_bot as run_telegram_bot
 
 # WebSocket connection manager
 class ConnectionManager:
