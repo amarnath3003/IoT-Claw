@@ -756,7 +756,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
     messages.append({"role": "user", "content": user_message})
 
     tool_calls_log = []
-    MAX_ROUNDS = 8  # prevent infinite loops
+    MAX_ROUNDS = 15  # prevent infinite loops
 
     try:
         for _ in range(MAX_ROUNDS):

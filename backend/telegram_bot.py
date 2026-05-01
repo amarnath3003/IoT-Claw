@@ -49,22 +49,37 @@ async def _tg(client: httpx.AsyncClient, method: str, **kwargs) -> dict:
         return {}
 
 
+import re
+
+def _md_to_html(text: str) -> str:
+    """Convert basic markdown to Telegram HTML, escaping unsafe tags."""
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = re.sub(r'```(?:.*?)\n?(.*?)```', r'<pre>\1</pre>', text, flags=re.DOTALL)
+    text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)
+    return text
+
 async def _send(client: httpx.AsyncClient, chat_id: int, text: str) -> None:
     """Send a plain-text message, splitting if >4096 chars (Telegram limit)."""
     # Telegram max message length
     MAX_LEN = 4096
+    
+    html_text = _md_to_html(text)
+    
     # Split on newline boundaries to keep formatting readable
-    while text:
-        chunk = text[:MAX_LEN]
+    while html_text:
+        chunk = html_text[:MAX_LEN]
         # Try to split at a newline so we don't cut mid-sentence
-        if len(text) > MAX_LEN:
+        if len(html_text) > MAX_LEN:
             split_at = chunk.rfind("\n")
             if split_at > MAX_LEN // 2:
                 chunk = chunk[:split_at]
-        text = text[len(chunk):]
+        html_text = html_text[len(chunk):]
         await _tg(client, "sendMessage",
                   chat_id=chat_id,
-                  text=chunk)
+                  text=chunk,
+                  parse_mode="HTML")
 
 
 # ── Authorization ─────────────────────────────────────────────────────────────
@@ -80,9 +95,9 @@ def _is_allowed(chat_id: int) -> bool:
 
 async def _handle_start(client: httpx.AsyncClient, chat_id: int) -> None:
     welcome = (
-        "🦾 *IoT-Claw AI Assistant* is online\\!\n\n"
+        "🦾 *IoT-Claw AI Assistant* is online!\n\n"
         "I can control your devices, read sensors, manage workflows — "
-        "all through natural language\\.\n\n"
+        "all through natural language.\n\n"
         "*Quick commands you can try:*\n"
         "• `list my devices`\n"
         "• `turn on the light`\n"
@@ -93,10 +108,7 @@ async def _handle_start(client: httpx.AsyncClient, chat_id: int) -> None:
         "/clear – reset conversation history\n"
         "/status – list all device states"
     )
-    # Use regular markdown (not MarkdownV2) for friendlier formatting
-    await _tg(client, "sendMessage",
-              chat_id=chat_id,
-              text=welcome.replace("\\!", "!").replace("\\.", "."))
+    await _send(client, chat_id, welcome)
 
 
 async def _handle_clear(client: httpx.AsyncClient, chat_id: int) -> None:
@@ -142,9 +154,14 @@ async def _handle_message(
         {"role": m["role"], "content": m["content"]}
         for m in _histories[chat_id]
     ]
+    
+    # Inject Telegram-specific formatting rules
+    telegram_history = [
+        {"role": "system", "content": "IMPORTANT: You are responding via Telegram. DO NOT use Markdown tables, # headers, or complex markdown. Telegram does not support them. Use simple text, emojis, and plain bullet points (-) for lists."}
+    ] + history
 
     try:
-        result = await run_chat_fn(text, history, mqtt, storage, engine=engine)
+        result = await run_chat_fn(text, telegram_history, mqtt, storage, engine=engine)
         reply: str = result.get("reply") or "Done."
         tool_calls: list = result.get("tool_calls", [])
 
@@ -161,9 +178,9 @@ async def _handle_message(
 
         # Attach tool-call badges to the reply if any tools were called
         if tool_calls:
-            tools_str = " · ".join(f"`{t['tool']}`" for t in tool_calls if isinstance(t, dict) and "tool" in t)
+            tools_str = " · ".join(f"<code>{t['tool']}</code>" for t in tool_calls if isinstance(t, dict) and "tool" in t)
             if tools_str:
-                reply = f"{reply}\n\n⚙ _{tools_str}_"
+                reply = f"{reply}\n\n<i>⚙ {tools_str}</i>"
 
         await _send(client, chat_id, reply)
 
