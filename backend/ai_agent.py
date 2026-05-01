@@ -7,7 +7,7 @@ import time
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 _api_key = os.getenv("OPENAI_API_KEY")
 _api_key_missing = not _api_key or _api_key.startswith("sk-proj-REPLACE")

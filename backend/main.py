@@ -8,7 +8,7 @@ import json
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 from ai_agent import run_chat
 from mqtt_client import MQTTClient
