@@ -1,8 +1,8 @@
 import sqlite3
 import os
 
-# Put the database in the backend directory
-DB_PATH = os.path.join(os.path.dirname(__file__), "iot_claw.db")
+# Put the database in the backend root directory (where main.py's parent is)
+DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "iot_claw.db"))
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
