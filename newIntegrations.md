@@ -226,3 +226,23 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 **New user flow:**
 > User opens Flash tab → fills in WiFi + MQTT + device name → clicks "Generate" → previews script → clicks "Connect & Flash via Web Serial" → browser prompts for USB port → firmware pushed in-browser — device auto-discovers on MQTT and appears in dashboard within seconds. Zero terminal, zero IDE required.
 
+---
+
+## 🚀 3. Remaining Roadmap (Yet to be Built)
+
+### 1. Phase 4: Edge Agent Migration (Latency-Free Automations)
+*   **Workflow Compiler:** A logic layer that takes a visual workflow (e.g., "If Temp > 30 then Turn ON Fan") and converts it into a MicroPython `loop()` function.
+*   **"Deploy to Edge" Button:** Add a button to the `WorkflowEditor` UI that pushes the compiled script to the ESP32. This reduces automation latency from ~5s (backend poll) to <100ms (on-device).
+
+### 2. Advanced Structured Local Memory
+*   **Persistence:** Modify `micropython_edge_agent.py` to save the received script to internal flash (e.g., `edge_logic.py`) so it survives power cycles.
+*   **Offline Schedules:** Sync system time via NTP and implement a local schedule runner on the ESP32 for hardware-based timing that works without an active network.
+
+### 3. Interactive Edge Console
+*   **Real-time Debugging:** Add a terminal-like view to the dashboard where users can see the `print()` output from their running edge scripts in real-time.
+
+### 4. Standardized MCP Protocol Implementation
+*   **Full MCP Server:** Move beyond custom JSON manifests to a formal Model Context Protocol implementation on the ESP32, allowing the hardware to be truly "agent-ready" for any compatible AI hub.
+
+### 5. Backend Reliability (Broker Reachability)
+*   **Self-Healing MQTT:** Implement better error handling and command queuing for when the MQTT broker is unreachable, providing the AI agent with clear feedback to share with the user.
