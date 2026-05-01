@@ -3,6 +3,7 @@ import {
   addEdge,
   Background,
   Controls,
+  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -10,25 +11,27 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { createWorkflow, getState, getWorkflows } from '../api'
+import { createWorkflow, deleteWorkflow, getState, getWorkflows } from '../api'
 import WorkflowList from './WorkflowList'
 
 const OPERATORS = ['>', '<', '>=', '<=', '==', '!=']
 
 const BLOCKS = [
-  { type: 'trigger.sensor',   label: 'Sensor Trigger',   icon: '◈', cat: 'trigger' },
-  { type: 'trigger.chat',     label: 'Chat Code',        icon: '⌘', cat: 'trigger' },
-  { type: 'trigger.schedule', label: 'Schedule',         icon: '⏱', cat: 'trigger' },
-  { type: 'action.device',    label: 'Device Action',    icon: '⏻', cat: 'action'  },
-  { type: 'action.brightness',label: 'Brightness',       icon: '◑', cat: 'action'  },
-  { type: 'action.camera_monitor', label: 'Camera CV',   icon: '⊙', cat: 'action'  },
-  { type: 'action.log',       label: 'Log Message',      icon: '⊟', cat: 'action'  },
+  { type: 'trigger.sensor',        label: 'Sensor Trigger',   icon: '◈', cat: 'trigger' },
+  { type: 'trigger.chat',          label: 'Chat Code',        icon: '⌘', cat: 'trigger' },
+  { type: 'trigger.schedule',      label: 'Schedule',         icon: '⏱', cat: 'trigger' },
+  { type: 'trigger.device_event',  label: 'Device Event',     icon: '⚡', cat: 'trigger' },
+  { type: 'action.device',         label: 'Device Action',    icon: '⏻', cat: 'action'  },
+  { type: 'action.brightness',     label: 'Brightness',       icon: '◑', cat: 'action'  },
+  { type: 'action.camera_monitor', label: 'Camera CV',        icon: '⊙', cat: 'action'  },
+  { type: 'action.log',            label: 'Log Message',      icon: '⊟', cat: 'action'  },
 ]
 
 const DEFAULT_CONFIG = {
   'trigger.sensor':        { device: '', operator: '>', value: '' },
   'trigger.chat':          { code: '' },
   'trigger.schedule':      { time: '07:30' },
+  'trigger.device_event':  { device: '', event: 'offline' },
   'action.device':         { device: '', command: 'ON' },
   'action.brightness':     { device: '', level: 50 },
   'action.camera_monitor': { device: 'laptop_security_camera', command: 'ON' },
@@ -52,6 +55,7 @@ function buildNodeLabel(data) {
   if (data.blockType === 'trigger.sensor')        detail = `${c.device || 'device'} ${c.operator} ${c.value || 'val'}`
   if (data.blockType === 'trigger.chat')          detail = c.code ? `"${c.code}"` : 'secret phrase'
   if (data.blockType === 'trigger.schedule')      detail = c.time || 'HH:MM'
+  if (data.blockType === 'trigger.device_event')  detail = `${c.device || 'device'} goes ${c.event || 'offline'}`
   if (data.blockType === 'action.device')         detail = `${c.device || 'device'} → ${c.command}`
   if (data.blockType === 'action.brightness')     detail = `${c.device || 'device'} → ${c.level}%`
   if (data.blockType === 'action.camera_monitor') detail = `${c.device || 'camera'} CV ${c.command}`
@@ -96,6 +100,7 @@ function WorkflowCanvas({ deviceStates }) {
   const [message, setMessage]           = useState('')
   const [msgType, setMsgType]           = useState('error')
   const [saving, setSaving]             = useState(false)
+  const [running, setRunning]           = useState(false)
   const { screenToFlowPosition }        = useReactFlow()
 
   useEffect(() => { if (Object.keys(deviceStates || {}).length) setDevices(deviceStates) }, [deviceStates])
@@ -179,8 +184,9 @@ function WorkflowCanvas({ deviceStates }) {
 
   const triggerPayload = node => {
     const { blockType, config: c } = getRaw(node)
-    if (blockType === 'trigger.sensor') return { type: 'sensor', device: c.device, operator: c.operator, value: isNaN(Number(c.value)) ? c.value : Number(c.value) }
-    if (blockType === 'trigger.chat')   return { type: 'chat',   code: c.code }
+    if (blockType === 'trigger.sensor')       return { type: 'sensor',       device: c.device, operator: c.operator, value: isNaN(Number(c.value)) ? c.value : Number(c.value) }
+    if (blockType === 'trigger.chat')         return { type: 'chat',         code: c.code }
+    if (blockType === 'trigger.device_event') return { type: 'device_event', device: c.device, event: c.event || 'offline' }
     return { type: 'schedule', time: c.time }
   }
 
@@ -193,9 +199,10 @@ function WorkflowCanvas({ deviceStates }) {
     if (actionNodes.length === 0)   throw new Error('Add at least one action block.')
 
     const trigger = triggerPayload(triggerNodes[0])
-    if (trigger.type === 'sensor'   && (!trigger.device || trigger.value === '')) throw new Error('Sensor trigger needs a device and value.')
-    if (trigger.type === 'chat'     && !trigger.code.trim()) throw new Error('Chat trigger needs a secret phrase.')
-    if (trigger.type === 'schedule' && !/^\d{2}:\d{2}$/.test(trigger.time)) throw new Error('Schedule time must be HH:MM.')
+    if (trigger.type === 'sensor'       && (!trigger.device || trigger.value === '')) throw new Error('Sensor trigger needs a device and value.')
+    if (trigger.type === 'chat'         && !trigger.code.trim()) throw new Error('Chat trigger needs a secret phrase.')
+    if (trigger.type === 'schedule'     && !/^\d{2}:\d{2}$/.test(trigger.time)) throw new Error('Schedule time must be HH:MM.')
+    if (trigger.type === 'device_event' && !trigger.device) throw new Error('Device Event trigger needs a device.')
 
     const connected = orderedActions(triggerNodes[0], actionNodes)
     if (connected.length === 0) throw new Error('Connect the trigger to at least one action block.')
@@ -219,6 +226,64 @@ function WorkflowCanvas({ deviceStates }) {
       },
     }
   }
+
+  // Export workflow as JSON file
+  const handleExport = () => {
+    try {
+      const payload = validateAndBuild()
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `${payload.name.replace(/\s+/g, '_')}_workflow.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setMessage(err.message)
+      setMsgType('error')
+    }
+  }
+
+  // Import workflow JSON to pre-fill the form
+  const handleImport = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const wf = JSON.parse(ev.target.result)
+        if (wf.name) setMeta(m => ({ ...m, name: wf.name, description: wf.description || '', cooldown_seconds: wf.cooldown_seconds || 60, enabled: wf.enabled ?? true }))
+        setMessage(`Imported "${wf.name}" — configure nodes and save.`)
+        setMsgType('success')
+      } catch { setMessage('Invalid JSON file.'); setMsgType('error') }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  // Test-run the last saved workflow that matches this name
+  const handleTestRun = async () => {
+    const match = workflows.find(w => w.name === meta.name.trim())
+    if (!match) { setMessage('Save the workflow first, then test-run it.'); setMsgType('error'); return }
+    setRunning(true)
+    try {
+      const res = await fetch(`/workflows/${match.id}/run`, { method: 'POST' })
+      const data = await res.json()
+      setMessage(`▶ Test run complete: ${JSON.stringify(data.result || 'ok')}`)
+      setMsgType('success')
+      refreshWorkflows()
+    } catch (err) { setMessage(`Run failed: ${err.message}`); setMsgType('error') }
+    finally { setRunning(false) }
+  }
+
+  // Delete selected node with Backspace/Delete key
+  const onKeyDown = useCallback((e) => {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+      setNodes(cur => cur.filter(n => n.id !== selectedNodeId))
+      setEdges(cur => cur.filter(e => e.source !== selectedNodeId && e.target !== selectedNodeId))
+      setSelectedNodeId(null)
+    }
+  }, [selectedNodeId, setNodes, setEdges])
 
   const handleSave = async () => {
     setMessage('')
@@ -244,18 +309,30 @@ function WorkflowCanvas({ deviceStates }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }} onKeyDown={onKeyDown} tabIndex={-1}>
 
       {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="led-pulse" />
           <h2 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Workflow Builder
+            Visual Workflow Builder
           </h2>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <span className="neu-badge">{workflows.length} saved</span>
+          <span className="neu-badge" style={{ fontSize: 10, color: 'var(--text-muted)' }}>Del key removes selected node</span>
+          {/* Import */}
+          <label className="neu-btn" style={{ padding: '6px 14px', fontSize: 11, cursor: 'pointer' }} title="Import workflow JSON">
+            ⬆ Import
+            <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
+          </label>
+          <button id="export-workflow-btn" onClick={handleExport} className="neu-btn" style={{ padding: '6px 14px', fontSize: 11 }} title="Export as JSON">
+            ⬇ Export
+          </button>
+          <button id="test-run-btn" onClick={handleTestRun} disabled={running} className="neu-btn" style={{ padding: '6px 14px', fontSize: 11, color: '#22c55e', borderColor: 'rgba(34,197,94,0.3)' }} title="Run the saved workflow now">
+            {running ? '⏳' : '▶ Test Run'}
+          </button>
           <button id="reset-canvas-btn" onClick={resetCanvas} className="neu-btn" style={{ padding: '6px 14px', fontSize: 11 }}>
             ↺ Reset
           </button>
@@ -348,7 +425,9 @@ function WorkflowCanvas({ deviceStates }) {
             onDrop={onDrop}
             onDragOver={e => e.preventDefault()}
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+            onPaneClick={() => setSelectedNodeId(null)}
             fitView
+            deleteKeyCode={null}
             style={{ background: '#0d0f11' }}
           >
             <Background color="#2a2f34" gap={24} size={1} />
@@ -358,6 +437,14 @@ function WorkflowCanvas({ deviceStates }) {
               borderRadius: 10,
               boxShadow: 'var(--sh-flat)',
             }} />
+            <MiniMap
+              nodeColor={n => {
+                const bt = n.data?.raw?.blockType || n.data?.blockType || ''
+                return bt.startsWith('trigger.') ? '#6366f1' : '#22c55e'
+              }}
+              maskColor="rgba(0,0,0,0.6)"
+              style={{ background: 'var(--bg-card)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10 }}
+            />
           </ReactFlow>
         </div>
 
@@ -479,6 +566,22 @@ function BlockInspector({ node, deviceNames, onChange }) {
           <label className="neu-label">Secret phrase</label>
           <input className="neu-input" value={config.code} onChange={e => onChange('code', e.target.value)} placeholder="open sesame" />
         </div>
+      )}
+
+      {data.blockType === 'trigger.device_event' && (
+        <>
+          <DeviceSelect value={config.device} deviceNames={deviceNames} label="Watch device" onChange={v => onChange('device', v)} />
+          <div>
+            <label className="neu-label">Event</label>
+            <select className="neu-input" value={config.event || 'offline'} onChange={e => onChange('event', e.target.value)}>
+              <option value="offline">Goes offline (heartbeat lost)</option>
+              <option value="online">Comes back online</option>
+            </select>
+          </div>
+          <div className="neu-alert-info" style={{ fontSize: 11 }}>
+            ⚡ Fires when the device's heartbeat is missed or restored.
+          </div>
+        </>
       )}
 
       {data.blockType === 'trigger.schedule' && (
