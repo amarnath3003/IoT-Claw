@@ -43,11 +43,10 @@ class ConnectionManager:
             self.disconnect(conn)
 
 
-storage_file = os.getenv("STORAGE_FILE", "storage.json")
 check_interval = float(os.getenv("EXECUTION_ENGINE_INTERVAL", "5"))
 
 manager = ConnectionManager()
-storage = Storage(storage_file)
+storage = Storage()
 mqtt = MQTTClient(storage=storage, ws_broadcast_fn=manager.broadcast)
 camera_service = SecurityCameraSimulator(storage=storage, ws_broadcast_fn=manager.broadcast)
 engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval, camera_service=camera_service)
@@ -56,6 +55,17 @@ mcp = MCPClient(mqtt=mqtt, storage=storage)
 # Link MCPClient's pending registry into the MQTT client for response routing
 mqtt.set_mcp_response_registry(mcp.pending)
 
+async def telemetry_cleanup():
+    while True:
+        try:
+            from db import get_connection
+            conn = get_connection()
+            conn.execute("DELETE FROM telemetry WHERE ts < datetime('now', '-30 days')")
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Telemetry cleanup error: {e}")
+        await asyncio.sleep(86400) # Run once a day
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -66,6 +76,7 @@ async def lifespan(app: FastAPI):
     mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     mqtt.connect(host=mqtt_host, port=mqtt_port)
     asyncio.create_task(engine.run())
+    asyncio.create_task(telemetry_cleanup())
     # Start Telegram bot (runs in background; no-ops gracefully if token missing)
     asyncio.create_task(
         run_telegram_bot(run_chat, mqtt, storage, engine, manager.broadcast)
@@ -178,6 +189,14 @@ async def get_telemetry(name: str):
     if name not in storage.get_all_devices():
         raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
     return storage.get_telemetry(name)
+
+
+@app.get("/devices/{name}/telemetry/history")
+async def get_historical_telemetry(name: str, days: int = Query(7, ge=1, le=30)):
+    """Return historical sensor readings for charting."""
+    if name not in storage.get_all_devices():
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+    return storage.get_historical_telemetry(name, days)
 
 
 @app.get("/devices/{name}/telemetry/export")
@@ -321,11 +340,7 @@ async def deploy_workflow(workflow_id: str):
     
     if ok:
         # Save state to storage
-        storage._data["workflows"] = [
-            {**w, "deployed_to_edge": True, "target_edge_device": target_device} if w.get("id") == workflow_id else w
-            for w in storage.get_workflows()
-        ]
-        storage._save()
+        storage.update_workflow_deployed(workflow_id, target_device, True)
         storage.add_script_history(target_device, {
             "timestamp": __import__('datetime').datetime.now().isoformat(),
             "script": compiled_script,
