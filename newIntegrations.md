@@ -304,3 +304,21 @@ Standard ESP-Claw targets the ESP32-S3. To bring these edge features to a standa
 
 **Success criteria:**
 > Boot the ESP32. Open the Device Card. Click "🔧 Tools". See `set_led`, `read_adc`, `set_pin` as interactive buttons. Click ► Run on `set_led` with state `ON` and watch the hardware LED light up in <200ms with a JSON-RPC response displayed inline.
+
+---
+
+## 📊 Summary of Built Features & Real-World Utility
+
+| Feature | Real-World Use Case & Benefits |
+| :--- | :--- |
+| **Web-Based Firmware Flashing** | **Simplifies Onboarding:** Users can setup new hardware directly from their browser without installing IDEs or drivers, making the project accessible to non-technical users. |
+| **MCP Discovery & Tool Calling** | **Plug-and-Play Intelligence:** New devices are automatically recognized by the AI. You can ask the AI "What can this device do?" and it will instantly know how to control its specific pins/sensors. |
+| **Dynamic Edge Scripting** | **Instant Logic Updates:** Change how your hardware behaves (e.g., changing a blink pattern or adding sensor logic) in seconds over the air, without physical access or re-flashing. |
+| **Edge Agent & Workflow Compiler** | **Mission-Critical Latency:** Automations (like "Turn on light if motion detected") run locally on the chip. This ensures they work even if the internet is down and react in milliseconds. |
+| **Real-Time Sensor Graphing** | **Data-Driven Insights:** Monitor environmental changes (temperature, humidity) visually over time and export data for professional reporting or optimization. |
+| **Script History & Rollback** | **Safety & Stability:** If a new automation script causes issues or bugs on the device, you can instantly revert to a previously working version from the dashboard. |
+| **Interactive Edge Console** | **Remote Debugging:** See exactly what's happening inside the hardware from anywhere in the world. No need to bring the device to your computer to check logs. |
+| **Device Health Monitoring** | **Reliability Monitoring:** Instantly know if a device has been unplugged or lost connection, preventing "silent failures" in critical monitoring systems. |
+| **Self-Healing MQTT Queuing** | **Robust Control:** If your network is flickering, commands aren't lost. They wait until the connection is back, ensuring your intent is eventually executed. |
+| **Edge Persistence (Local Memory)** | **Power-Cut Resilience:** If a device loses power, it remembers its logic and resumes its automation immediately upon reboot without needing the central server. |
+
