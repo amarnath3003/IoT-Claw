@@ -88,6 +88,12 @@ class Storage:
                     row['capabilities'] = json.loads(row['capabilities'])
                 except:
                     row['capabilities'] = []
+                    
+            if row.get('last_detection'):
+                try:
+                    row['last_detection'] = json.loads(row['last_detection'])
+                except:
+                    row['last_detection'] = {}
             
             row['simulated'] = bool(row.get('simulated'))
             row['script_history'] = history_map.get(row['name'], [])
@@ -194,7 +200,7 @@ class Storage:
         return None
 
     def update_device_field(self, device_name: str, field: str, value):
-        if field in ("capabilities",):
+        if field in ("capabilities", "last_detection"):
             value = json.dumps(value)
         self._execute(
             f'UPDATE devices SET {field} = ?, last_updated = ? WHERE name = ?',

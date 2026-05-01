@@ -30,7 +30,9 @@ def init_db():
             last_heartbeat DATETIME,
             created_at DATETIME,
             capabilities TEXT,
-            simulated BOOLEAN
+            simulated BOOLEAN,
+            last_detection TEXT,
+            last_snapshot TEXT
         )
     ''')
 
