@@ -49,7 +49,7 @@ manager = ConnectionManager()
 storage = Storage()
 mqtt = MQTTClient(storage=storage, ws_broadcast_fn=manager.broadcast)
 camera_service = SecurityCameraSimulator(storage=storage, ws_broadcast_fn=manager.broadcast)
-engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval, camera_service=camera_service)
+engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval, camera_service=camera_service, ws_broadcast_fn=manager.broadcast)
 edge_compiler = EdgeCompiler(storage=storage)
 mcp = MCPClient(mqtt=mqtt, storage=storage)
 # Link MCPClient's pending registry into the MQTT client for response routing

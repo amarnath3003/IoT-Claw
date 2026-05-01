@@ -7,11 +7,12 @@ except ImportError:
     def _notify(*a, **kw): pass
 
 class ExecutionEngine:
-    def __init__(self, storage, mqtt, check_interval: float = 5.0, camera_service=None):
+    def __init__(self, storage, mqtt, check_interval: float = 5.0, camera_service=None, ws_broadcast_fn=None):
         self.storage = storage
         self.mqtt = mqtt
         self.check_interval = check_interval
         self.camera_service = camera_service
+        self.ws_broadcast_fn = ws_broadcast_fn
         self._last_triggered: dict = {}
         self.cooldown_seconds = 60
         self._chat_triggers: dict = {}
@@ -260,7 +261,18 @@ class ExecutionEngine:
                 self.storage.add_log("info", "engine", msg, {"workflow": workflow.get("name")})
                 results.append({"log": msg})
 
+        if results:
+            self._broadcast_state()
+            
         return results
+
+    def _broadcast_state(self):
+        if self.ws_broadcast_fn:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.ws_broadcast_fn({"type": "state", "data": self.storage.get_all_devices()}))
+            except RuntimeError:
+                pass
 
     def execute_device_action(self, device_name: str, command: str, source: str = "engine", workflow: dict = None) -> dict:
         devices = self.storage.get_all_devices()
@@ -294,6 +306,7 @@ class ExecutionEngine:
         success = self.mqtt.publish(topic, command)
         if success:
             self.storage.update_device_field(device_name, "status", command)
+            self._broadcast_state()
         self.storage.add_log(
             "success" if success else "error",
             source,
