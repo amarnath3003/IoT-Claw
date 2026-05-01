@@ -17,6 +17,7 @@ from execution_engine import ExecutionEngine
 from security_camera import SecurityCameraSimulator
 from edge_compiler import EdgeCompiler
 from mcp_client import MCPClient
+from telegram_bot import run_bot as run_telegram_bot
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -65,6 +66,10 @@ async def lifespan(app: FastAPI):
     mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     mqtt.connect(host=mqtt_host, port=mqtt_port)
     asyncio.create_task(engine.run())
+    # Start Telegram bot (runs in background; no-ops gracefully if token missing)
+    asyncio.create_task(
+        run_telegram_bot(run_chat, mqtt, storage, engine)
+    )
     yield
     # Shutdown
     camera_service.stop()
@@ -357,6 +362,19 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+
+@app.get("/telegram/status")
+async def telegram_status():
+    """Return Telegram bot configuration status."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    return {
+        "telegram_bot_enabled": bool(token),
+        "token_configured": bool(token),
+        "allowed_chat_id": chat_id or "(all chats allowed)",
+        "status": "running" if token else "disabled — set TELEGRAM_BOT_TOKEN in .env",
+    }
 
 
 @app.get("/")
