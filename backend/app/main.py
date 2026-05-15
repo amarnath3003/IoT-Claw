@@ -18,6 +18,7 @@ from app.services.security_camera import SecurityCameraSimulator
 from app.services.edge_compiler import EdgeCompiler
 from app.services.mcp_client import MCPClient
 from app.services.telegram_bot import run_bot as run_telegram_bot
+from app.services.zigbee_adapter import ZigbeeAdapter
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -76,6 +77,20 @@ async def lifespan(app: FastAPI):
     mqtt_host = os.getenv("MQTT_BROKER_HOST", "localhost")
     mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     mqtt.connect(host=mqtt_host, port=mqtt_port)
+
+    zigbee_adapter = None
+    if os.getenv("ZIGBEE2MQTT_ENABLED", "false").lower() == "true":
+        zigbee_adapter = ZigbeeAdapter(
+            mqtt_client=mqtt,
+            storage=storage,
+            ws_broadcast_fn=manager.broadcast
+        )
+        mqtt.set_zigbee_adapter(zigbee_adapter)
+        zigbee_adapter.start()
+        print("[Zigbee] ZigbeeAdapter started")
+        # Store a ref for AI agent to access
+        storage._zigbee_ref = zigbee_adapter
+
     asyncio.create_task(engine.run())
     asyncio.create_task(telemetry_cleanup())
     # Start Telegram bot (runs in background; no-ops gracefully if token missing)

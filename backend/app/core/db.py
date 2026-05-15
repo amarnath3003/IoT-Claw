@@ -31,6 +31,10 @@ def init_db():
             created_at DATETIME,
             capabilities TEXT,
             simulated BOOLEAN,
+            zigbee BOOLEAN,
+            ieee_address TEXT,
+            vendor TEXT,
+            model TEXT,
             last_detection TEXT,
             last_snapshot TEXT
         )

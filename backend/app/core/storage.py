@@ -96,6 +96,7 @@ class Storage:
                     row['last_detection'] = {}
             
             row['simulated'] = bool(row.get('simulated'))
+            row['zigbee'] = bool(row.get('zigbee'))
             row['script_history'] = history_map.get(row['name'], [])
             devices[row['name']] = row
         return devices
@@ -107,8 +108,8 @@ class Storage:
             INSERT OR REPLACE INTO devices (
                 name, topic_base, type, status, location, description, 
                 unit, brightness, last_updated, last_heartbeat, created_at, 
-                capabilities, simulated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                capabilities, simulated, zigbee, ieee_address, vendor, model
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             name,
             device.get("topic_base"),
@@ -122,7 +123,11 @@ class Storage:
             device.get("last_heartbeat"),
             device.get("created_at", datetime.now().isoformat()),
             capabilities,
-            device.get("simulated", False)
+            device.get("simulated", False),
+            device.get("zigbee", False),
+            device.get("ieee_address", ""),
+            device.get("vendor", ""),
+            device.get("model", "")
         ), commit=True)
 
     def ensure_device(self, device: dict) -> dict:
@@ -142,7 +147,11 @@ class Storage:
                 "last_updated": None,
                 "created_at": datetime.now().isoformat(),
                 "capabilities": device.get("capabilities", []),
-                "simulated": device.get("simulated", False)
+                "simulated": device.get("simulated", False),
+                "zigbee": device.get("zigbee", False),
+                "ieee_address": device.get("ieee_address", ""),
+                "vendor": device.get("vendor", ""),
+                "model": device.get("model", "")
             }
             self.register_device(record)
             record["script_history"] = []
@@ -151,7 +160,7 @@ class Storage:
         existing = rows[0]
         updates = []
         params = []
-        for key in ("topic_base", "type", "unit", "location", "description", "simulated", "capabilities"):
+        for key in ("topic_base", "type", "unit", "location", "description", "simulated", "capabilities", "zigbee", "ieee_address", "vendor", "model"):
             if key in device:
                 updates.append(f"{key} = ?")
                 val = device[key]

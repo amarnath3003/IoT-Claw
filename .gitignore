@@ -113,3 +113,4 @@ backend/scratch_*.py
 ehthumbs.db
 Thumbs.db
 Desktop.ini
+zigbee2mqtt.md

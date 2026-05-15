@@ -1,6 +1,9 @@
+import os
 import paho.mqtt.client as mqtt_lib
 import asyncio
 import json
+
+Z2M_BASE = os.getenv("ZIGBEE2MQTT_BASE_TOPIC", "zigbee2mqtt")
 
 class MQTTClient:
     def __init__(self, storage, ws_broadcast_fn):
@@ -16,6 +19,10 @@ class MQTTClient:
         self._queue = []  # List of dicts: {"topic": str, "payload": str, "ts": datetime}
         self.queue_ttl = 60  # seconds
         self._mcp_pending = {}  # injected from MCPClient: req_id -> asyncio.Future
+        self._zigbee_adapter = None
+
+    def set_zigbee_adapter(self, adapter):
+        self._zigbee_adapter = adapter
 
     def connect(self, host="localhost", port=1883):
         self._loop = asyncio.get_event_loop()
@@ -108,6 +115,11 @@ class MQTTClient:
             # MCP: subscribe to all device tool-call responses
             client.subscribe("home/+/mcp/response")
             print("[MQTT] Subscribed to home/+/mcp/response")
+
+            if os.getenv("ZIGBEE2MQTT_ENABLED", "false").lower() == "true":
+                z2m = os.getenv("ZIGBEE2MQTT_BASE_TOPIC", "zigbee2mqtt")
+                client.subscribe(f"{z2m}/#")
+                print(f"[MQTT] Subscribed to {z2m}/#")
         else:
             print(f"[MQTT] Connection failed with code {rc}")
 
@@ -135,6 +147,12 @@ class MQTTClient:
         if topic.endswith("/mcp/response"):
             self._handle_mcp_response(payload)
             return
+
+        # Zigbee2MQTT messages
+        if topic.startswith(Z2M_BASE + "/"):
+            if self._zigbee_adapter:
+                self._zigbee_adapter.handle_message(topic, payload)
+            return   # Don't process as ESP32 device
 
         # Try to parse payload as JSON or number
         try:
