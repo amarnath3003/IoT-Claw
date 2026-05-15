@@ -6,6 +6,7 @@ import WorkflowEditor from './components/WorkflowEditor'
 import TemplateLibrary from './components/TemplateLibrary'
 import FlashDevice from './components/FlashDevice'
 import useWebSocket from './hooks/useWebSocket'
+import { zigbeePermitJoin } from './api'
 import './index.css'
 
 const INITIAL_MESSAGE = {
@@ -25,7 +26,7 @@ const TABS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState('Dashboard')
   const [chatMessages, setChatMessages] = useState([INITIAL_MESSAGE])
-  const { deviceStates, isConnected, brokerConnected, lastMessage } = useWebSocket('ws://127.0.0.1:8000/ws')
+  const { deviceStates, isConnected, brokerConnected, lastMessage, zigbeePairing } = useWebSocket('ws://127.0.0.1:8000/ws')
   const deviceCount = Object.keys(deviceStates).length
 
   return (
@@ -125,6 +126,25 @@ export default function App() {
           flexShrink: 0
         }}>
           <span>⚠️ MQTT Broker is Offline. Device commands will be queued for up to 60 seconds.</span>
+        </div>
+      )}
+
+      {/* ── ZIGBEE PAIRING BANNER ── */}
+      {zigbeePairing?.active && (
+        <div style={{
+          background: 'rgba(99,102,241,0.1)',
+          borderBottom: '1px solid rgba(99,102,241,0.25)',
+          padding: '8px 24px',
+          display: 'flex', alignItems: 'center', gap: 10,
+          color: 'rgba(99,102,241,0.9)', fontSize: 13, fontWeight: 600,
+          flexShrink: 0
+        }}>
+          <div className="led-pulse" style={{ background: 'rgba(99,102,241,0.9)' }} />
+          🔗 Zigbee pairing mode OPEN — power on your device now ({zigbeePairing.duration}s window)
+          <button onClick={() => zigbeePermitJoin(false)}
+            style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: 11, background: 'rgba(99,102,241,0.2)', border: 'none', color: '#fff', borderRadius: 4, cursor: 'pointer' }}>
+            Close Pairing
+          </button>
         </div>
       )}
 

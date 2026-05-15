@@ -61,4 +61,16 @@ export const callMcpTool = (name, tool, args = {}) =>
 export const getTelemetryExportUrl = (name) =>
   `${API_BASE}/devices/${encodeURIComponent(name)}/telemetry/export`
 
+export const zigbeeSet = (name, payload) =>
+  api.post(`/devices/${encodeURIComponent(name)}/zigbee/set`, payload)
+
+export const zigbeePermitJoin = (enable, duration = 120) =>
+  api.post('/zigbee/permit_join', { enable, duration })
+
+export const zigbeeRemoveDevice = (name, force = false) =>
+  api.delete(`/zigbee/devices/${encodeURIComponent(name)}`, { params: { force } })
+
+export const getZigbeeStatus = () =>
+  api.get('/zigbee/status')
+
 export default api

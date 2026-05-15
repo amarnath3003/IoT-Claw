@@ -5,6 +5,7 @@ export default function useWebSocket(url) {
   const [isConnected, setIsConnected] = useState(false)
   const [brokerConnected, setBrokerConnected] = useState(true)
   const [lastMessage, setLastMessage] = useState(null)
+  const [zigbeePairing, setZigbeePairing] = useState(null)
   const wsRef = useRef(null)
 
   useEffect(() => {
@@ -52,6 +53,8 @@ export default function useWebSocket(url) {
               }
               return updated
             })
+          } else if (msg.type === 'zigbee_pairing') {
+            setZigbeePairing({ active: msg.active, duration: msg.duration })
           }
         } catch (e) {
           console.warn('[WS] Failed to parse message:', e)
@@ -67,5 +70,5 @@ export default function useWebSocket(url) {
     }
   }, [url])
 
-  return { deviceStates, isConnected, brokerConnected, lastMessage }
+  return { deviceStates, isConnected, brokerConnected, lastMessage, zigbeePairing }
 }

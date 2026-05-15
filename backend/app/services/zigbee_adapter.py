@@ -99,6 +99,12 @@ class ZigbeeAdapter:
         self.ws_broadcast_fn = ws_broadcast_fn
         self._known_names: set[str] = set()
 
+        import asyncio
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
+
     def start(self):
         """Subscribe to all Zigbee2MQTT topics."""
         base = Z2M_BASE
@@ -222,6 +228,16 @@ class ZigbeeAdapter:
             f"Zigbee pairing mode {state_str}",
             {"enabled": enable, "duration": duration_seconds if enable else 0}
         )
+        if self.ws_broadcast_fn and self._loop and self._loop.is_running():
+            import asyncio
+            asyncio.run_coroutine_threadsafe(
+                self.ws_broadcast_fn({
+                    "type": "zigbee_pairing",
+                    "active": enable,
+                    "duration": duration_seconds if enable else 0
+                }),
+                self._loop
+            )
         return {"pairing": enable, "duration": duration_seconds if enable else 0, "ok": ok}
 
     def remove_device(self, friendly_name: str, force: bool = False) -> dict:
