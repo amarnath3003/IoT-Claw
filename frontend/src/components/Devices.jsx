@@ -63,7 +63,9 @@ export default function Devices({ deviceStates, wsMessages }) {
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
   const [success, setSuccess] = useState('')
-  const devices = Object.entries(deviceStates || {})
+  const devices = Object.entries(deviceStates || {}).filter(
+    ([_, d]) => !d.zigbee && !d.type?.startsWith('zigbee_')
+  )
 
   const update = (field, value) => setForm(cur => ({ ...cur, [field]: value }))
 
