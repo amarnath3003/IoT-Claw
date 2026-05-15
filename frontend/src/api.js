@@ -70,6 +70,9 @@ export const zigbeePermitJoin = (enable, duration = 120) =>
 export const zigbeeRemoveDevice = (name, force = false) =>
   api.delete(`/zigbee/devices/${encodeURIComponent(name)}`, { params: { force } })
 
+export const zigbeeRenameDevice = (name, newName) =>
+  api.put(`/zigbee/devices/${encodeURIComponent(name)}/rename`, { newName })
+
 export const getZigbeeStatus = () =>
   api.get('/zigbee/status')
 

@@ -248,6 +248,31 @@ async def zigbee_remove(name: str, force: bool = False):
     return result
 
 
+@app.put("/zigbee/devices/{name}/rename")
+async def zigbee_rename(name: str, body: dict):
+    """Rename a Zigbee device."""
+    if not zigbee_adapter:
+        raise HTTPException(503, "Zigbee adapter not running")
+    new_name = body.get("newName")
+    if not new_name:
+        raise HTTPException(400, "newName is required")
+        
+    result = zigbee_adapter.rename_device(name, new_name)
+    
+    # Update local storage explicitly
+    devices = storage.get_all_devices()
+    if name in devices:
+        # Re-register under new name and delete old
+        device = devices[name]
+        device["name"] = new_name
+        device["topic_base"] = device["topic_base"].replace(name, new_name)
+        storage.register_device(device)
+        storage.delete_device(name)
+        
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return result
+
+
 @app.get("/zigbee/status")
 async def zigbee_status():
     """Return Zigbee2MQTT connection status."""
