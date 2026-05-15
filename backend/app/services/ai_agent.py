@@ -72,6 +72,20 @@ Some devices are MicroPython edge agents (type: micropython_edge_agent). These s
 - Prefer push_script over control_device for complex automations on edge devices.
 - After pushing, confirm what logic the device will run locally.
 
+═══ ZIGBEE DEVICE INTELLIGENCE ═══
+Zigbee devices are auto-discovered from Zigbee2MQTT. They appear exactly like ESP32 devices.
+- For lights: use zigbee_set (not control_device) to get full brightness/color control
+- For sensors: use zigbee_read_sensor for fresh readings
+- For pairing:
+  → "pair", "add a new device", "put in pairing mode" → zigbee_permit_join(enable=true, duration=120)
+  → Tell user to power on device within 2 minutes
+  → "stop pairing", "close pairing", "done pairing" → zigbee_permit_join(enable=false)
+- For removal: "remove [device]", "unpair [device]" → zigbee_remove_device(device_name)
+- Color mapping: "warm white" → color_temp=370, "cool white" → color_temp=153, "daylight" → color_temp=200
+- Brightness: "dim" → brightness=50, "half" → brightness=127, "full/max" → brightness=254
+- "Breathe" / "pulse" / "colorloop" → use effect parameter
+- For groups: "all bedroom lights" → zigbee_group_set(group_name="bedroom", ...)
+
 ═══ TONE ═══
 Be concise, friendly, and confident. Confirm what you did in 1-2 sentences. Use emojis sparingly for warmth."""
 
@@ -404,6 +418,89 @@ Always call get_device_capabilities first to discover the device's tools.""",
                 "required": ["device_name", "tool_name"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "zigbee_set",
+            "description": "Send a Zigbee SET command to a device. Use for:\n- Color lights: set brightness, RGB color, color temperature, effects\n- Sensors: read-only, no SET needed\n- Plugs: ON/OFF with power monitoring\n- Groups: control all devices in a room at once\nAlways prefer this over control_device for Zigbee light devices when color/brightness is needed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string", "description": "Friendly name of the Zigbee device"},
+                    "state":       {"type": "string", "enum": ["ON", "OFF", "TOGGLE"], "description": "Power state"},
+                    "brightness":  {"type": "integer", "minimum": 1, "maximum": 254, "description": "Brightness 1-254"},
+                    "color_temp":  {"type": "integer", "minimum": 150, "maximum": 500, "description": "Color temperature in Mireds. 150=cool/daylight, 370=warm/candle"},
+                    "color":       {"type": "object", "description": "RGB color. {\"r\":255,\"g\":100,\"b\":0} for orange"},
+                    "effect":      {"type": "string", "enum": ["blink", "breathe", "okay", "channel_change", "colorloop", "finish_effect", "stop_effect"], "description": "Lighting effect"},
+                    "transition":  {"type": "number", "description": "Transition time in seconds (default 0)"}
+                },
+                "required": ["device_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "zigbee_permit_join",
+            "description": "Open or close Zigbee pairing mode. Use when user says 'pair a new device', 'add a Zigbee device', 'put in pairing mode', 'stop pairing'. When opening, default duration is 120 seconds.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "enable":   {"type": "boolean", "description": "true to open pairing, false to close"},
+                    "duration": {"type": "integer", "description": "How long to keep pairing open in seconds (default 120, max 254)"}
+                },
+                "required": ["enable"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "zigbee_remove_device",
+            "description": "Unpair and remove a Zigbee device from the network. Use when user says 'remove', 'unpair', 'delete' a Zigbee device.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string"},
+                    "force":       {"type": "boolean", "description": "Force remove even if device is unreachable (default false)"}
+                },
+                "required": ["device_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "zigbee_group_set",
+            "description": "Control all Zigbee devices in a named group simultaneously (e.g. all bedroom lights). Use for 'turn off all bedroom lights' or 'set living room to warm white'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "group_name":  {"type": "string", "description": "Group friendly name (e.g. 'bedroom', 'living_room')"},
+                    "state":       {"type": "string", "enum": ["ON", "OFF", "TOGGLE"]},
+                    "brightness":  {"type": "integer", "minimum": 1, "maximum": 254},
+                    "color_temp":  {"type": "integer", "minimum": 150, "maximum": 500},
+                    "color":       {"type": "object"},
+                    "effect":      {"type": "string"}
+                },
+                "required": ["group_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "zigbee_read_sensor",
+            "description": "Read the latest value from a Zigbee sensor (temperature, humidity, motion, contact, power). Returns current status.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_name": {"type": "string"}
+                },
+                "required": ["device_name"]
+            }
+        }
     }
 ]
 
@@ -698,11 +795,86 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         """Call a native MCP tool on an edge device and return the result."""
         # Import here to avoid circular dependency; mcp is already wired in main.py
         # We call the REST endpoint logic directly via the mcp_client module
-        from mcp_client import MCPClient
+        from app.services.mcp_client import MCPClient
         _mcp = MCPClient(mqtt=mqtt, storage=storage)
         mqtt.set_mcp_response_registry(_mcp.pending)
         result = await _mcp.call_tool(device_name, tool_name, arguments or {})
         return result
+
+    def zigbee_set_fn(device_name: str, state: str = None, brightness: int = None,
+                      color_temp: int = None, color: dict = None,
+                      effect: str = None, transition: float = None) -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
+            return {"error": f"Zigbee device '{device_name}' not found", "known_devices": list(devices.keys())}
+        if not devices[matched].get("zigbee"):
+            return {"error": f"'{matched}' is not a Zigbee device. Use control_device instead."}
+
+        za = getattr(storage, '_zigbee_ref', None)
+        if not za:
+            return {"error": "Zigbee adapter not running. Is ZIGBEE2MQTT_ENABLED=true in .env?"}
+
+        payload = {}
+        if state:       payload["state"]      = state.upper()
+        if brightness:  payload["brightness"] = brightness
+        if color_temp:  payload["color_temp"] = color_temp
+        if color:       payload["color"]      = color
+        if effect:      payload["effect"]     = effect
+        if transition:  payload["transition"] = transition
+
+        ok = za.publish_command(matched, payload)
+        storage.add_log("success" if ok else "error", "ai",
+                        f"AI Zigbee SET: {matched} = {payload}", {"device": matched})
+        return {"device": matched, "payload": payload, "ok": ok}
+
+    def zigbee_permit_join_fn(enable: bool, duration: int = 120) -> dict:
+        za = getattr(storage, '_zigbee_ref', None)
+        if not za:
+            return {"error": "Zigbee adapter not running"}
+        result = za.permit_join(enable, duration)
+        action = "opened" if enable else "closed"
+        return {"pairing_mode": action, "duration": duration if enable else 0, "ok": result["ok"]}
+
+    def zigbee_remove_device_fn(device_name: str, force: bool = False) -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
+            return {"error": f"Device '{device_name}' not found"}
+        za = getattr(storage, '_zigbee_ref', None)
+        if not za:
+            return {"error": "Zigbee adapter not running"}
+        return za.remove_device(matched, force)
+
+    def zigbee_group_set_fn(group_name: str, state: str = None, brightness: int = None,
+                             color_temp: int = None, color: dict = None, effect: str = None) -> dict:
+        za = getattr(storage, '_zigbee_ref', None)
+        if not za:
+            return {"error": "Zigbee adapter not running"}
+        payload = {}
+        if state:      payload["state"]      = state.upper()
+        if brightness: payload["brightness"] = brightness
+        if color_temp: payload["color_temp"] = color_temp
+        if color:      payload["color"]      = color
+        if effect:     payload["effect"]     = effect
+        ok = za.mqtt.publish(
+            f"{os.getenv('ZIGBEE2MQTT_BASE_TOPIC','zigbee2mqtt')}/{group_name}/set",
+            json.dumps(payload)
+        )
+        return {"group": group_name, "payload": payload, "ok": ok}
+
+    def zigbee_read_sensor_fn(device_name: str) -> dict:
+        matched, devices = _resolve(device_name)
+        if not matched:
+            return {"error": f"Device '{device_name}' not found"}
+        d = devices[matched]
+        return {
+            "device":  matched,
+            "type":    d.get("type"),
+            "status":  d.get("status"),
+            "unit":    d.get("unit", ""),
+            "brightness": d.get("brightness"),
+            "last_updated": d.get("last_updated", "never"),
+            "zigbee":  d.get("zigbee", False),
+        }
 
     return {
         "control_device": control_device,
@@ -724,6 +896,11 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         "rollback_script": rollback_script_fn,
         "get_device_capabilities": get_device_capabilities_fn,
         "call_hardware_tool": call_hardware_tool_fn,
+        "zigbee_set": zigbee_set_fn,
+        "zigbee_permit_join": zigbee_permit_join_fn,
+        "zigbee_remove_device": zigbee_remove_device_fn,
+        "zigbee_group_set": zigbee_group_set_fn,
+        "zigbee_read_sensor": zigbee_read_sensor_fn,
     }
 
 
