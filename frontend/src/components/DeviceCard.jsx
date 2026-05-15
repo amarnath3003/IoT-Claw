@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript, getTelemetryExportUrl, callMcpTool } from '../api'
+import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript, getTelemetryExportUrl, callMcpTool, zigbeeSet } from '../api'
 import EdgeConsole from './EdgeConsole'
 
 /* ── Resolve a colorful emoji icon + bg color from name + type ── */
@@ -24,6 +24,15 @@ function resolveIcon(name, type) {
   if (type === 'dimmable_switch') return { emoji: '💡', bg: 'rgba(251,191,36,0.12)',  glow: 'rgba(251,191,36,0.25)' }
   if (type === 'switch')          return { emoji: '🔌', bg: 'rgba(34,197,94,0.12)',   glow: 'rgba(34,197,94,0.25)' }
   if (type === 'sensor')          return { emoji: '📡', bg: 'rgba(37,99,235,0.12)',   glow: 'rgba(37,99,235,0.25)' }
+  if (type === 'zigbee_color_light')    return { emoji: '🌈', bg: 'rgba(167,139,250,0.12)', glow: 'rgba(167,139,250,0.3)' }
+  if (type === 'zigbee_light')          return { emoji: '💡', bg: 'rgba(251,191,36,0.12)',  glow: 'rgba(251,191,36,0.25)' }
+  if (type === 'zigbee_plug')           return { emoji: '🔌', bg: 'rgba(34,197,94,0.12)',   glow: 'rgba(34,197,94,0.25)' }
+  if (type === 'zigbee_climate_sensor') return { emoji: '🌡️', bg: 'rgba(239,68,68,0.12)',   glow: 'rgba(239,68,68,0.25)' }
+  if (type === 'zigbee_motion_sensor')  return { emoji: '🚶', bg: 'rgba(234,179,8,0.12)',   glow: 'rgba(234,179,8,0.25)' }
+  if (type === 'zigbee_contact_sensor') return { emoji: '🚪', bg: 'rgba(251,146,60,0.12)',  glow: 'rgba(251,146,60,0.25)' }
+  if (type === 'zigbee_remote')         return { emoji: '🎛️', bg: 'rgba(99,102,241,0.12)', glow: 'rgba(99,102,241,0.25)' }
+  if (type === 'zigbee_switch')         return { emoji: '⚡', bg: 'rgba(37,99,235,0.12)',   glow: 'rgba(37,99,235,0.25)' }
+  if (type === 'zigbee_sensor')         return { emoji: '📡', bg: 'rgba(37,99,235,0.12)',   glow: 'rgba(37,99,235,0.25)' }
   return                                  { emoji: '⚙️', bg: 'rgba(107,114,128,0.12)', glow: 'rgba(107,114,128,0.2)' }
 }
 
@@ -250,6 +259,90 @@ function McpToolsPanel({ deviceName, capabilities }) {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+/* ── Zigbee Color Panel ── */
+function ZigbeeColorPanel({ name, data }) {
+  const [brightness, setBrightness] = useState(data.brightness || 127)
+  const [colorTemp, setColorTemp]   = useState(300)
+  const [color, setColor]           = useState('#ffffff')
+  const [mode, setMode]             = useState('white') // 'white' | 'color'
+
+  const apply = async (patch) => {
+    try { await zigbeeSet(name, patch) }
+    catch (e) { console.error('[ZigbeeColorPanel]', e) }
+  }
+
+  return (
+    <div className="neu-trough" style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Mode toggle */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        {['white', 'color'].map(m => (
+          <button key={m} onClick={() => setMode(m)}
+            style={{
+              flex: 1, padding: '5px 0', borderRadius: 7, border: 'none', cursor: 'pointer',
+              fontSize: 11, fontWeight: 600,
+              background: mode === m ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
+              color: mode === m ? '#fff' : 'var(--text-muted)',
+            }}>
+            {m === 'white' ? '☀️ White' : '🌈 Color'}
+          </button>
+        ))}
+      </div>
+
+      {/* Brightness */}
+      <div>
+        <label className="neu-label">Brightness</label>
+        <input type="range" min="1" max="254" value={brightness}
+          onChange={e => { setBrightness(+e.target.value); apply({ brightness: +e.target.value }) }}
+          style={{ width: '100%', accentColor: 'var(--accent)' }} />
+      </div>
+
+      {/* Color Temperature (white mode) */}
+      {mode === 'white' && (
+        <div>
+          <label className="neu-label">Color Temp — {colorTemp <= 200 ? 'Cool' : colorTemp >= 370 ? 'Warm' : 'Neutral'}</label>
+          <input type="range" min="150" max="500" value={colorTemp}
+            onChange={e => { setColorTemp(+e.target.value); apply({ color_temp: +e.target.value }) }}
+            style={{ width: '100%', accentColor: '#fbbf24' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
+            <span>Cool 6500K</span><span>Warm 2700K</span>
+          </div>
+        </div>
+      )}
+
+      {/* RGB Picker (color mode) */}
+      {mode === 'color' && (
+        <div>
+          <label className="neu-label">Color</label>
+          <input type="color" value={color}
+            onChange={e => {
+              setColor(e.target.value)
+              const hex = e.target.value.replace('#','')
+              const r = parseInt(hex.slice(0,2),16)
+              const g = parseInt(hex.slice(2,4),16)
+              const b = parseInt(hex.slice(4,6),16)
+              apply({ color: { r, g, b } })
+            }}
+            style={{ width: '100%', height: 36, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'transparent' }} />
+        </div>
+      )}
+
+      {/* Effect buttons */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+        {['blink','breathe','colorloop'].map(fx => (
+          <button key={fx} onClick={() => apply({ effect: fx })}
+            className="neu-btn" style={{ padding: '4px 10px', fontSize: 10 }}>
+            {fx}
+          </button>
+        ))}
+        <button onClick={() => apply({ effect: 'stop_effect' })}
+          className="neu-btn" style={{ padding: '4px 10px', fontSize: 10, color: '#f87171' }}>
+          stop
+        </button>
+      </div>
     </div>
   )
 }
@@ -527,6 +620,11 @@ export default function DeviceCard({ name, data, wsMessages }) {
             </svg>
             {isOffline ? 'OFFLINE — No heartbeat' : toggling ? 'Switching…' : isOn ? 'ON — Tap to turn off' : 'OFF — Tap to turn on'}
           </button>
+        )}
+
+        {/* ── Zigbee Color Panel ── */}
+        {data.type === 'zigbee_color_light' && isOn && (
+          <ZigbeeColorPanel name={name} data={data} />
         )}
 
         {/* ── Edge Console ── */}

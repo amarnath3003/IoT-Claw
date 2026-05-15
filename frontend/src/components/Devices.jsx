@@ -28,15 +28,34 @@ function resolveIcon(name, type) {
   if (type === 'dimmable_switch') return '💡'
   if (type === 'switch')          return '🔌'
   if (type === 'sensor')          return '📡'
+  if (type === 'zigbee_color_light')    return '🌈'
+  if (type === 'zigbee_light')          return '💡'
+  if (type === 'zigbee_plug')           return '🔌'
+  if (type === 'zigbee_climate_sensor') return '🌡️'
+  if (type === 'zigbee_motion_sensor')  return '🚶'
+  if (type === 'zigbee_contact_sensor') return '🚪'
+  if (type === 'zigbee_remote')         return '🎛️'
+  if (type === 'zigbee_switch')         return '⚡'
+  if (type === 'zigbee_sensor')         return '📡'
   return '⚙️'
 }
 
 const TYPE_LABELS = {
-  switch:          'Switch',
-  sensor:          'Sensor',
-  dimmable_switch: 'Dimmable',
-  security_camera: 'Camera',
-  generic:         'Generic',
+  switch:                'Switch',
+  sensor:                'Sensor',
+  dimmable_switch:       'Dimmable',
+  security_camera:       'Camera',
+  generic:               'Generic',
+  micropython_edge_agent:'Edge Agent',
+  zigbee_light:          'Zigbee Light',
+  zigbee_color_light:    'Zigbee RGB',
+  zigbee_plug:           'Zigbee Plug',
+  zigbee_climate_sensor: 'Zigbee Climate',
+  zigbee_motion_sensor:  'Zigbee Motion',
+  zigbee_contact_sensor: 'Zigbee Door',
+  zigbee_remote:         'Zigbee Remote',
+  zigbee_switch:         'Zigbee Switch',
+  zigbee_sensor:         'Zigbee Sensor',
 }
 
 export default function Devices({ deviceStates, wsMessages }) {
