@@ -18,7 +18,6 @@ const INITIAL_MESSAGE = {
 const TABS = [
   { id: 'Dashboard', icon: '⊞' },
   { id: 'Devices',   icon: '⊡' },
-  { id: 'Zigbee',    icon: '📡' },
   { id: 'Chat',      icon: '⌘' },
   { id: 'Workflows', icon: '⟳' },
   { id: 'Templates', icon: '⊟' },
@@ -202,7 +201,6 @@ export default function App() {
           <div style={{ maxWidth: 1400, margin: '0 auto', height: '100%' }}>
             {activeTab === 'Dashboard'  && <Dashboard deviceStates={deviceStates} wsMessages={lastMessage} />}
             {activeTab === 'Devices'    && <Devices deviceStates={deviceStates} wsMessages={lastMessage} />}
-            {activeTab === 'Zigbee'     && <ZigbeeManager deviceStates={deviceStates} wsMessages={lastMessage} />}
             {activeTab === 'Chat'       && <Chat messages={chatMessages} setMessages={setChatMessages} />}
             {activeTab === 'Workflows'  && <WorkflowEditor deviceStates={deviceStates} />}
             {activeTab === 'Templates'  && <TemplateLibrary />}

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { deleteDevice, registerDevice } from '../api'
+import ZigbeeManager from './ZigbeeManager'
 
 const DEFAULT_FORM = {
   name: '',
@@ -59,6 +60,7 @@ const TYPE_LABELS = {
 }
 
 export default function Devices({ deviceStates, wsMessages }) {
+  const [subTab, setSubTab]   = useState('mqtt') // 'mqtt' or 'zigbee'
   const [form, setForm]       = useState(DEFAULT_FORM)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
@@ -91,7 +93,40 @@ export default function Devices({ deviceStates, wsMessages }) {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 28, alignItems: 'start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      
+      {/* ── Sub-Tab Switcher ── */}
+      <div style={{ display: 'flex', gap: 10, background: 'var(--bg-dark)', padding: 6, borderRadius: 12, alignSelf: 'flex-start', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <button 
+          onClick={() => setSubTab('mqtt')}
+          style={{
+            padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
+            background: subTab === 'mqtt' ? 'var(--accent)' : 'transparent',
+            color: subTab === 'mqtt' ? '#fff' : 'var(--text-muted)',
+            boxShadow: subTab === 'mqtt' ? '0 2px 10px rgba(37,99,235,0.3)' : 'none',
+          }}
+        >
+          🔌 MQTT Devices
+        </button>
+        <button 
+          onClick={() => setSubTab('zigbee')}
+          style={{
+            padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
+            background: subTab === 'zigbee' ? 'rgba(99,102,241,0.9)' : 'transparent',
+            color: subTab === 'zigbee' ? '#fff' : 'var(--text-muted)',
+            boxShadow: subTab === 'zigbee' ? '0 2px 10px rgba(99,102,241,0.3)' : 'none',
+          }}
+        >
+          📡 Zigbee Network
+        </button>
+      </div>
+
+      {subTab === 'zigbee' ? (
+        <ZigbeeManager deviceStates={deviceStates} wsMessages={wsMessages} />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 28, alignItems: 'start' }}>
 
       {/* ── LEFT: Register Form ── */}
       <div className="neu-section">
@@ -313,5 +348,7 @@ export default function Devices({ deviceStates, wsMessages }) {
         )}
       </div>
     </div>
+  )}
+</div>
   )
 }
