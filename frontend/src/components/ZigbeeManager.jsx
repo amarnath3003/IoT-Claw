@@ -354,7 +354,7 @@ function PairingWizard({ onStartPairing, onClose }) {
     {
       icon: '🔄',
       title: 'Reset your Zigbee device',
-      desc: 'Most devices need a factory reset before pairing. Hold the button on your device for 5–10 seconds until the LED flashes rapidly. Refer to your device\\'s manual.',
+      desc: 'Most devices need a factory reset before pairing. Hold the button on your device for 5–10 seconds until the LED flashes rapidly. Refer to your device\'s manual.',
       check: 'Device reset / ready',
     },
     {
