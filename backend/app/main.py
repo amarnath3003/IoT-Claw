@@ -19,6 +19,7 @@ from app.services.edge_compiler import EdgeCompiler
 from app.services.mcp_client import MCPClient
 from app.services.telegram_bot import run_bot as run_telegram_bot
 from app.services.zigbee_adapter import ZigbeeAdapter
+from app.services.ha_adapter import HomeAssistantAdapter
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -57,6 +58,7 @@ mcp = MCPClient(mqtt=mqtt, storage=storage)
 mqtt.set_mcp_response_registry(mcp.pending)
 
 zigbee_adapter = None
+ha_adapter = None
 
 async def telemetry_cleanup():
     while True:
@@ -80,7 +82,7 @@ async def lifespan(app: FastAPI):
     mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     mqtt.connect(host=mqtt_host, port=mqtt_port)
 
-    global zigbee_adapter
+    global zigbee_adapter, ha_adapter
     if os.getenv("ZIGBEE2MQTT_ENABLED", "false").lower() == "true":
         zigbee_adapter = ZigbeeAdapter(
             mqtt_client=mqtt,
@@ -93,6 +95,15 @@ async def lifespan(app: FastAPI):
         # Store a ref for AI agent to access
         storage._zigbee_ref = zigbee_adapter
 
+    if os.getenv("HA_ENABLED", "false").lower() == "true":
+        ha_adapter = HomeAssistantAdapter(
+            storage=storage,
+            ws_broadcast_fn=manager.broadcast
+        )
+        asyncio.create_task(ha_adapter.run())
+        storage._ha_ref = ha_adapter
+        print("[HA] HomeAssistantAdapter started")
+
     asyncio.create_task(engine.run())
     asyncio.create_task(telemetry_cleanup())
     # Start Telegram bot (runs in background; no-ops gracefully if token missing)
@@ -101,6 +112,8 @@ async def lifespan(app: FastAPI):
     )
     yield
     # Shutdown
+    if ha_adapter:
+        ha_adapter.stop()
     camera_service.stop()
     mqtt.disconnect()
 
@@ -174,8 +187,29 @@ async def command_device(name: str, body: dict):
     command = str(body.get("command", "")).upper()
     device = storage.get_all_devices().get(name)
     is_zigbee = device and device.get("zigbee")
+    is_ha = device and device.get("ha_entity")
 
-    if is_zigbee and zigbee_adapter:
+    if is_ha and ha_adapter:
+        # Route to Home Assistant service call
+        data = {"state": command}
+        if "brightness_pct" in body:
+            data["brightness_pct"] = int(body["brightness_pct"])
+        if "brightness" in body:
+            # HA brightness is 0-255; accept either raw or pct
+            data["brightness"] = int(body["brightness"])
+        if "color_temp" in body:
+            data["color_temp"] = int(body["color_temp"])
+        if "color_temp_kelvin" in body:
+            data["color_temp_kelvin"] = int(body["color_temp_kelvin"])
+        if "color" in body:
+            data["rgb_color"] = body["color"]
+        if "temperature" in body:
+            data["temperature"] = body["temperature"]
+        if "hvac_mode" in body:
+            data["hvac_mode"] = body["hvac_mode"]
+        result = await ha_adapter.call_service(name, data=data)
+        result["status"] = "ha_service_call"
+    elif is_zigbee and zigbee_adapter:
         # Build SET payload from command
         payload = {}
         if command in {"ON", "OFF", "TOGGLE"}:
@@ -285,6 +319,94 @@ async def zigbee_status():
         "zigbee_device_count": zigbee_count,
         "base_topic": os.getenv("ZIGBEE2MQTT_BASE_TOPIC", "zigbee2mqtt"),
     }
+
+
+# ── Home Assistant Endpoints ──────────────────────────────────────────────────
+
+@app.get("/ha/status")
+async def ha_status():
+    """Return Home Assistant adapter status and entity count."""
+    enabled = os.getenv("HA_ENABLED", "false").lower() == "true"
+    if not enabled:
+        return {"enabled": False, "connected": False, "entity_count": 0}
+    if not ha_adapter:
+        return {"enabled": True, "connected": False, "entity_count": 0, "error": "Adapter not initialised"}
+    return ha_adapter.get_status()
+
+
+@app.post("/ha/entities/{entity_id:path}/set")
+async def ha_entity_set(entity_id: str, body: dict):
+    """
+    Send an arbitrary service call to a Home Assistant entity.
+    body examples:
+      {"state": "ON", "brightness_pct": 80}
+      {"state": "ON", "color_temp_kelvin": 4000}
+      {"temperature": 22, "hvac_mode": "cool"}
+      {"state": "OFF"}
+    """
+    device = storage.get_all_devices().get(entity_id)
+    if not device:
+        raise HTTPException(404, f"Entity '{entity_id}' not found")
+    if not device.get("ha_entity"):
+        raise HTTPException(400, "This endpoint is only for Home Assistant entities")
+    if not ha_adapter:
+        raise HTTPException(503, "Home Assistant adapter not running")
+
+    result = await ha_adapter.call_service(entity_id, data=body)
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return {"entity_id": entity_id, "payload": body, "result": result}
+
+
+@app.post("/ha/call_service")
+async def ha_call_service(body: dict):
+    """
+    Raw Home Assistant service call. For advanced / AI use.
+    body: {"domain": "light", "service": "turn_on", "entity_id": "light.kitchen", "data": {}}
+    """
+    if not ha_adapter:
+        raise HTTPException(503, "Home Assistant adapter not running")
+
+    domain     = body.get("domain")
+    service    = body.get("service")
+    entity_id  = body.get("entity_id", "")
+    data       = body.get("data", {})
+
+    if not domain or not service:
+        raise HTTPException(400, "'domain' and 'service' are required")
+
+    result = await ha_adapter.call_service(
+        entity_id,
+        service=f"{service}",   # pass as-is; adapter sends to HA
+        data=data,
+    )
+    # Override domain in case it differs from entity domain
+    import json as _json
+    # Direct call to HA bypassing domain inference
+    if ha_adapter._connected and ha_adapter._ws:
+        payload = {
+            "id":           ha_adapter._next_id(),
+            "type":         "call_service",
+            "domain":       domain,
+            "service":      service,
+            "service_data": data,
+        }
+        if entity_id:
+            payload["target"] = {"entity_id": entity_id}
+        await ha_adapter._ws.send_str(_json.dumps(payload))
+        storage.add_log("success", "ha", f"Raw HA service: {domain}.{service}", body)
+        result = {"ok": True, "domain": domain, "service": service}
+
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return result
+
+
+@app.post("/ha/refresh")
+async def ha_refresh():
+    """Force re-import of all HA entities."""
+    if not ha_adapter:
+        raise HTTPException(503, "Home Assistant adapter not running")
+    count = await ha_adapter.force_refresh()
+    return {"status": "refreshed", "entity_count": count}
 
 
 @app.get("/devices/{name}/preview")

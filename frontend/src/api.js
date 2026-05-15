@@ -76,4 +76,21 @@ export const zigbeeRenameDevice = (name, newName) =>
 export const getZigbeeStatus = () =>
   api.get('/zigbee/status')
 
+// ── Home Assistant API ─────────────────────────────────────────────────────
+
+export const getHAStatus = () =>
+  api.get('/ha/status')
+
+export const haSetEntity = (entityId, payload) =>
+  api.post(`/ha/entities/${encodeURIComponent(entityId)}/set`, payload)
+
+export const haCallService = (domain, service, entityId = '', data = {}) =>
+  api.post('/ha/call_service', { domain, service, entity_id: entityId, data })
+
+export const haRefresh = () =>
+  api.post('/ha/refresh')
+
+export const haCommandDevice = (name, command, extras = {}) =>
+  api.post(`/devices/${encodeURIComponent(name)}/command`, { command, ...extras })
+
 export default api

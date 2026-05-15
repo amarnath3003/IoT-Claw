@@ -88,7 +88,20 @@ Zigbee devices are auto-discovered from Zigbee2MQTT. They appear exactly like ES
 - For groups: "all bedroom lights" → zigbee_group_set(group_name="bedroom", ...)
 
 ═══ TONE ═══
-Be concise, friendly, and confident. Confirm what you did in 1-2 sentences. Use emojis sparingly for warmth."""
+Be concise, friendly, and confident. Confirm what you did in 1-2 sentences. Use emojis sparingly for warmth.
+
+═══ HOME ASSISTANT DEVICE INTELLIGENCE ═══
+Home Assistant entities appear as ha_* type devices (ha_entity=True in the device record).
+They are named with dot notation: e.g. "light.kitchen_ceiling", "switch.bedroom_fan", "climate.living_room".
+- For lights: use ha_control with brightness_pct (0-100) and/or color_temp_kelvin. Never use raw brightness (0-255) with ha_control.
+- For thermostats/climate: use ha_control with temperature (number) and hvac_mode (cool/heat/off/auto/heat_cool)
+- For covers/blinds: ha_control action=on → opens, action=off → closes
+- For locks: ha_control action=on → unlocks, action=off → locks
+- For scenes: use ha_call_service(domain="scene", service="turn_on", entity_id="scene.movie_night", data={})
+- For scripts: use ha_call_service(domain="script", service="turn_on", entity_id="script.good_morning", data={})
+- "movie mode", "good night", "morning routine" → look for matching HA scene/script names first
+- Use ha_list_entities to discover what HA entities exist before controlling by guessed name
+- HA entities support all workflow triggers — a sensor threshold on "sensor.bedroom_temperature" works exactly like an ESP32 sensor"""
 
 
 TOOLS = [
@@ -502,6 +515,63 @@ Always call get_device_capabilities first to discover the device's tools.""",
                 "required": ["device_name"]
             }
         }
+    },
+    # ── Home Assistant Tools ───────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "ha_control",
+            "description": """Control a Home Assistant entity. Use for any HA light, switch, lock, fan, climate device, media player, cover, etc.
+Examples:
+- Turn on kitchen light at 80%: ha_control(entity_id='light.kitchen', action='on', brightness_pct=80)
+- Set thermostat to 22°C heat: ha_control(entity_id='climate.living_room', action='on', temperature=22, hvac_mode='heat')
+- Lock front door: ha_control(entity_id='lock.front_door', action='off')
+- Open blinds: ha_control(entity_id='cover.bedroom_blinds', action='on')""",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "entity_id": {"type": "string", "description": "Full HA entity ID e.g. 'light.kitchen_ceiling'"},
+                    "action": {"type": "string", "enum": ["on", "off", "toggle"], "description": "on=turn_on, off=turn_off"},
+                    "brightness_pct": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Light brightness 0-100%"},
+                    "color_temp_kelvin": {"type": "integer", "description": "Color temperature in Kelvin (2700=warm, 6500=cool)"},
+                    "rgb_color": {"type": "array", "items": {"type": "integer"}, "description": "RGB color as [r, g, b] e.g. [255, 100, 0]"},
+                    "temperature": {"type": "number", "description": "Target temperature for climate devices"},
+                    "hvac_mode": {"type": "string", "enum": ["cool", "heat", "off", "auto", "heat_cool", "fan_only", "dry"], "description": "HVAC mode for climate devices"},
+                    "media_content_id": {"type": "string", "description": "Media content ID for media_player entities"}
+                },
+                "required": ["entity_id", "action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ha_list_entities",
+            "description": "List Home Assistant entities, optionally filtered by domain. Use when user asks what HA devices exist or you need to discover entity IDs before controlling them.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "domain": {"type": "string", "description": "Optional HA domain to filter by. e.g. 'light', 'switch', 'sensor', 'climate', 'lock', 'cover', 'media_player'. Leave empty for all."}
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ha_call_service",
+            "description": "Call any Home Assistant service directly. Use for scenes, scripts, or advanced control not covered by ha_control.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "domain": {"type": "string", "description": "HA domain e.g. 'scene', 'script', 'homeassistant', 'notify'"},
+                    "service": {"type": "string", "description": "Service name e.g. 'turn_on', 'turn_off', 'reload'"},
+                    "entity_id": {"type": "string", "description": "Target entity ID (optional for some services)"},
+                    "data": {"type": "object", "description": "Additional service data as JSON object"}
+                },
+                "required": ["domain", "service"]
+            }
+        }
     }
 ]
 
@@ -877,6 +947,90 @@ def build_tool_dispatch(mqtt, storage, engine=None):
             "zigbee":  d.get("zigbee", False),
         }
 
+    # ── Home Assistant tool handlers ──────────────────────────────────────────
+
+    async def ha_control_fn(entity_id: str, action: str,
+                            brightness_pct: int = None, color_temp_kelvin: int = None,
+                            rgb_color: list = None, temperature: float = None,
+                            hvac_mode: str = None, media_content_id: str = None) -> dict:
+        """Control any Home Assistant entity."""
+        ha = getattr(storage, '_ha_ref', None)
+        if not ha:
+            return {"error": "Home Assistant adapter not running. Set HA_ENABLED=true in .env."}
+        if not ha._connected:
+            return {"error": "Home Assistant is not connected. Check HA_HOST and HA_TOKEN."}
+
+        data = {"state": action.upper()}
+        if brightness_pct is not None:
+            data["brightness_pct"] = brightness_pct
+        if color_temp_kelvin is not None:
+            data["color_temp_kelvin"] = color_temp_kelvin
+        if rgb_color is not None:
+            data["rgb_color"] = rgb_color
+        if temperature is not None:
+            data["temperature"] = temperature
+        if hvac_mode is not None:
+            data["hvac_mode"] = hvac_mode
+        if media_content_id is not None:
+            data["media_content_id"] = media_content_id
+
+        result = await ha.call_service(entity_id, data=data)
+        storage.add_log(
+            "success" if result.get("ok") else "error",
+            "ai",
+            f"AI HA control: {entity_id} → {action.upper()}",
+            {"entity_id": entity_id, "action": action, "data": data}
+        )
+        return result
+
+    def ha_list_entities_fn(domain: str = "") -> dict:
+        """List HA entities from storage, optionally filtered by domain."""
+        devices = storage.get_all_devices()
+        ha_devices = {k: v for k, v in devices.items() if v.get("ha_entity")}
+        if domain:
+            ha_devices = {k: v for k, v in ha_devices.items() if v.get("ha_domain") == domain.lower()}
+        summary = [
+            {
+                "entity_id": k,
+                "type": v.get("type"),
+                "status": v.get("status"),
+                "description": v.get("description"),
+                "location": v.get("location"),
+                "unit": v.get("unit", ""),
+            }
+            for k, v in ha_devices.items()
+        ]
+        return {"entities": summary, "count": len(summary), "domain_filter": domain or "all"}
+
+    async def ha_call_service_fn(domain: str, service: str,
+                                  entity_id: str = "", data: dict = None) -> dict:
+        """Raw HA service call — for scenes, scripts, notify, etc."""
+        ha = getattr(storage, '_ha_ref', None)
+        if not ha:
+            return {"error": "Home Assistant adapter not running. Set HA_ENABLED=true in .env."}
+        if not ha._connected:
+            return {"error": "Home Assistant is not connected."}
+
+        import json as _json
+        if ha._ws:
+            payload = {
+                "id":      ha._next_id(),
+                "type":    "call_service",
+                "domain":  domain,
+                "service": service,
+                "service_data": data or {},
+            }
+            if entity_id:
+                payload["target"] = {"entity_id": entity_id}
+            await ha._ws.send_str(_json.dumps(payload))
+            storage.add_log(
+                "success", "ai",
+                f"AI raw HA service: {domain}.{service} → {entity_id or '(global)'}",
+                {"domain": domain, "service": service, "entity_id": entity_id, "data": data}
+            )
+            return {"ok": True, "domain": domain, "service": service, "entity_id": entity_id}
+        return {"error": "HA WebSocket not available"}
+
     return {
         "control_device": control_device,
         "blink_device": blink_device,
@@ -902,6 +1056,10 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         "zigbee_remove_device": zigbee_remove_device_fn,
         "zigbee_group_set": zigbee_group_set_fn,
         "zigbee_read_sensor": zigbee_read_sensor_fn,
+        # Home Assistant
+        "ha_control": ha_control_fn,
+        "ha_list_entities": ha_list_entities_fn,
+        "ha_call_service": ha_call_service_fn,
     }
 
 

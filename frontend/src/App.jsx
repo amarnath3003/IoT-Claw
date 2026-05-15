@@ -3,6 +3,7 @@ import Chat from './components/Chat'
 import Dashboard from './components/Dashboard'
 import Devices from './components/Devices'
 import ZigbeeManager from './components/ZigbeeManager'
+import HAManager from './components/HAManager'
 import WorkflowEditor from './components/WorkflowEditor'
 import TemplateLibrary from './components/TemplateLibrary'
 import FlashDevice from './components/FlashDevice'
@@ -16,12 +17,13 @@ const INITIAL_MESSAGE = {
 }
 
 const TABS = [
-  { id: 'Dashboard', icon: '⊞' },
-  { id: 'Devices',   icon: '⊡' },
-  { id: 'Chat',      icon: '⌘' },
-  { id: 'Workflows', icon: '⟳' },
-  { id: 'Templates', icon: '⊟' },
-  { id: 'Flash',     icon: '⚡' },
+  { id: 'Dashboard',     icon: '⊞' },
+  { id: 'Devices',       icon: '⊡' },
+  { id: 'Chat',          icon: '⌘' },
+  { id: 'Workflows',     icon: '⟳' },
+  { id: 'Templates',     icon: '⊟' },
+  { id: 'Flash',         icon: '⚡' },
+  { id: 'HomeAssistant', icon: '🏠' },
 ]
 
 export default function App() {
@@ -199,12 +201,13 @@ export default function App() {
         {/* ── MAIN ── */}
         <main style={{ flex: 1, overflowY: 'auto', padding: '28px 24px' }}>
           <div style={{ maxWidth: 1400, margin: '0 auto', height: '100%' }}>
-            {activeTab === 'Dashboard'  && <Dashboard deviceStates={deviceStates} wsMessages={lastMessage} />}
-            {activeTab === 'Devices'    && <Devices deviceStates={deviceStates} wsMessages={lastMessage} />}
-            {activeTab === 'Chat'       && <Chat messages={chatMessages} setMessages={setChatMessages} />}
-            {activeTab === 'Workflows'  && <WorkflowEditor deviceStates={deviceStates} />}
-            {activeTab === 'Templates'  && <TemplateLibrary />}
-            {activeTab === 'Flash'      && <FlashDevice />}
+            {activeTab === 'Dashboard'     && <Dashboard deviceStates={deviceStates} wsMessages={lastMessage} />}
+            {activeTab === 'Devices'       && <Devices deviceStates={deviceStates} wsMessages={lastMessage} />}
+            {activeTab === 'Chat'          && <Chat messages={chatMessages} setMessages={setChatMessages} />}
+            {activeTab === 'Workflows'     && <WorkflowEditor deviceStates={deviceStates} />}
+            {activeTab === 'Templates'     && <TemplateLibrary />}
+            {activeTab === 'Flash'         && <FlashDevice />}
+            {activeTab === 'HomeAssistant' && <HAManager deviceStates={deviceStates} />}
           </div>
         </main>
       </div>
