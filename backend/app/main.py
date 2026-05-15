@@ -56,6 +56,8 @@ mcp = MCPClient(mqtt=mqtt, storage=storage)
 # Link MCPClient's pending registry into the MQTT client for response routing
 mqtt.set_mcp_response_registry(mcp.pending)
 
+zigbee_adapter = None
+
 async def telemetry_cleanup():
     while True:
         try:
@@ -78,7 +80,7 @@ async def lifespan(app: FastAPI):
     mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     mqtt.connect(host=mqtt_host, port=mqtt_port)
 
-    zigbee_adapter = None
+    global zigbee_adapter
     if os.getenv("ZIGBEE2MQTT_ENABLED", "false").lower() == "true":
         zigbee_adapter = ZigbeeAdapter(
             mqtt_client=mqtt,
@@ -170,15 +172,94 @@ async def delete_device(name: str):
 async def command_device(name: str, body: dict):
     """Send an ON/OFF command to a device, including simulated devices."""
     command = str(body.get("command", "")).upper()
-    if command not in {"ON", "OFF"}:
-        raise HTTPException(status_code=400, detail="command must be ON or OFF")
-    result = engine.execute_device_action(name, command, source="api")
-    if not result:
-        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
-    if result.get("error"):
-        raise HTTPException(status_code=400, detail=result["error"])
+    device = storage.get_all_devices().get(name)
+    is_zigbee = device and device.get("zigbee")
+
+    if is_zigbee and zigbee_adapter:
+        # Build SET payload from command
+        payload = {}
+        if command in {"ON", "OFF", "TOGGLE"}:
+            payload["state"] = command
+        if "brightness" in body:
+            payload["brightness"] = int(body["brightness"])
+        if "color_temp" in body:
+            payload["color_temp"] = int(body["color_temp"])
+        if "color" in body:
+            payload["color"] = body["color"]
+        ok = zigbee_adapter.publish_command(name, payload)
+        result = {"status": "zigbee_set", "ok": ok}
+    else:
+        if command not in {"ON", "OFF"}:
+            raise HTTPException(status_code=400, detail="command must be ON or OFF")
+        result = engine.execute_device_action(name, command, source="api")
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=result["error"])
+
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return {"status": "sent", "device": name, "command": command, "result": result}
+
+
+@app.post("/devices/{name}/zigbee/set")
+async def zigbee_set(name: str, body: dict):
+    """
+    Send an arbitrary Zigbee SET payload to a device.
+    body examples:
+      {"state": "ON", "brightness": 200}
+      {"color": {"r": 255, "g": 50, "b": 0}}
+      {"color_temp": 300}
+      {"effect": "colorloop"}
+    """
+    device = storage.get_all_devices().get(name)
+    if not device:
+        raise HTTPException(404, f"Device '{name}' not found")
+    if not device.get("zigbee"):
+        raise HTTPException(400, "This endpoint is only for Zigbee devices")
+    if not zigbee_adapter:
+        raise HTTPException(503, "Zigbee adapter not running")
+
+    ok = zigbee_adapter.publish_command(name, body)
+    storage.add_log("success" if ok else "error", "api",
+                    f"Zigbee SET on {name}: {body}", {"device": name, "payload": body})
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return {"device": name, "payload": body, "ok": ok}
+
+
+@app.post("/zigbee/permit_join")
+async def permit_join(body: dict):
+    """Open/close Zigbee pairing mode."""
+    if not zigbee_adapter:
+        raise HTTPException(503, "Zigbee adapter not running")
+    enable   = body.get("enable", True)
+    duration = body.get("duration", 254)
+    result   = zigbee_adapter.permit_join(enable, duration)
+    await manager.broadcast({"type": "zigbee_pairing", "active": enable, "duration": duration})
+    return result
+
+
+@app.delete("/zigbee/devices/{name}")
+async def zigbee_remove(name: str, force: bool = False):
+    """Remove a Zigbee device from the network."""
+    if not zigbee_adapter:
+        raise HTTPException(503, "Zigbee adapter not running")
+    result = zigbee_adapter.remove_device(name, force)
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return result
+
+
+@app.get("/zigbee/status")
+async def zigbee_status():
+    """Return Zigbee2MQTT connection status."""
+    enabled = os.getenv("ZIGBEE2MQTT_ENABLED", "false").lower() == "true"
+    devices = storage.get_all_devices()
+    zigbee_count = sum(1 for d in devices.values() if d.get("zigbee"))
+    return {
+        "enabled": enabled,
+        "adapter_running": zigbee_adapter is not None,
+        "zigbee_device_count": zigbee_count,
+        "base_topic": os.getenv("ZIGBEE2MQTT_BASE_TOPIC", "zigbee2mqtt"),
+    }
 
 
 @app.get("/devices/{name}/preview")
