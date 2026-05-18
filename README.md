@@ -145,6 +145,24 @@ home/hall/light/set ON
 home/hall/light/state ON
 ```
 
+## 🏠 Home Assistant Integration
+
+IoT-Claw can integrate with **Home Assistant** to control all your HA entities directly through the dashboard and AI commands. All HA devices are auto-imported and synced in real-time.
+
+**Supported Domains:** Lights, switches, climate, fans, covers, locks, media players, cameras, scenes, and more.
+
+**Quick Setup:**
+1. Generate a long-lived access token in Home Assistant
+2. Add environment variables to `backend/.env`:
+   ```env
+   HA_HOST=192.168.1.100
+   HA_PORT=8123
+   HA_TOKEN=eyJhbGc...
+   ```
+3. Restart backend → All HA entities appear in IoT-Claw
+
+**Full Guide:** See [HOME_ASSISTANT_SETUP.md](HOME_ASSISTANT_SETUP.md) for detailed setup, configuration, troubleshooting, and advanced options.
+
 ## 💬 Chat Examples
 
 ### Device Control
@@ -361,7 +379,7 @@ docker-compose up
 - [ ] Advanced workflow conditions (if/else logic)
 - [ ] Device grouping (rooms, zones)
 - [ ] Voice control via speech-to-text
-- [ ] Integration with Home Assistant
+- [x] Integration with Home Assistant ✅ (See [HOME_ASSISTANT_SETUP.md](HOME_ASSISTANT_SETUP.md))
 - [ ] Energy monitoring & analytics
 - [ ] Webhook triggers for external services
 
