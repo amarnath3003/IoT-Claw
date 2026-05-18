@@ -1101,7 +1101,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
-                max_completion_tokens=1024,
+                max_completion_tokens=2048,
             )
 
             choice = response.choices[0]
