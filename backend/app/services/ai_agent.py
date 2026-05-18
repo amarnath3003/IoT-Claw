@@ -103,6 +103,51 @@ They are named with dot notation: e.g. "light.kitchen_ceiling", "switch.bedroom_
 - Use ha_list_entities to discover what HA entities exist before controlling by guessed name
 - HA entities support all workflow triggers — a sensor threshold on "sensor.bedroom_temperature" works exactly like an ESP32 sensor"""
 
+COMPACT_SYSTEM_PROMPT = """You are iotClaw — an IoT automation assistant.
+
+=== CORE RULES ===
+1. Infer intent from natural language.
+2. For device actions, call the correct tool. Do not just describe actions.
+3. If device name is ambiguous, call list_devices and pick the best match by name/location.
+4. Keep replies concise and confirm what you did.
+
+=== QUICK EXAMPLES ===
+- "turn on the light" -> control_device(nearest light device, ON)
+- "blink the LED 3 times" -> blink_device(led_device, times=3)
+- "what devices do I have?" -> list_devices()
+- "read temp sensor" -> read_sensor(temperature_device)
+
+=== DEVICE MATCHING ===
+- "light" / "LED" -> any switch or dimmable switch
+- "fan" -> device with "fan" in name
+- "camera" -> laptop_security_camera
+"""
+
+BIG_TASK_KEYWORDS = {
+    "esp32", "micropython", "arduino", "firmware", "script", "code", "workflow",
+    "automation", "sequence", "yaml", "json", "regex", "integration", "mqtt",
+    "zigbee", "home assistant", "ha_", "device_event", "websocket",
+}
+
+DEVICE_INTENT_KEYWORDS = {
+    "turn on", "turn off", "toggle", "switch", "dim", "brightness", "set ",
+    "blink", "flash", "pulse", "read", "status", "devices", "list devices",
+    "sensor", "temperature", "humidity", "lock", "unlock", "open", "close",
+    "play", "pause", "volume", "scene",
+}
+
+
+def _is_big_task(message: str) -> bool:
+    msg = (message or "").lower()
+    if len(msg) >= 200:
+        return True
+    return any(k in msg for k in BIG_TASK_KEYWORDS)
+
+
+def _needs_device_context(message: str) -> bool:
+    msg = (message or "").lower()
+    return any(k in msg for k in DEVICE_INTENT_KEYWORDS)
+
 
 TOOLS = [
     {
@@ -1082,10 +1127,22 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
             return {"reply": f"Triggered workflow: {names}. Set OPENAI_API_KEY to enable full AI chat.", "tool_calls": []}
         return {"reply": "AI chat is disabled. Set OPENAI_API_KEY in backend/.env to enable natural-language control.", "tool_calls": []}
 
-    dynamic_prompt = SYSTEM_PROMPT
-    if mqtt and hasattr(mqtt, 'is_connected'):
+    is_big_task = _is_big_task(user_message)
+    dynamic_prompt = SYSTEM_PROMPT if is_big_task else COMPACT_SYSTEM_PROMPT
+    if mqtt and hasattr(mqtt, 'is_connected') and _needs_device_context(user_message):
         state = "ONLINE" if mqtt.is_connected else "OFFLINE"
-        dynamic_prompt += f"\n\n[SYSTEM CONTEXT: The internal MQTT Broker is currently {state}. If it is OFFLINE, your device commands will be queued but they will not execute immediately. Make sure to politely inform the user if this happens.]"
+        dynamic_prompt += (
+            f"\n\n[SYSTEM CONTEXT: The internal MQTT Broker is currently {state}. "
+            "If it is OFFLINE, device commands will be queued but not execute immediately. "
+            "Politely inform the user if this happens.]"
+        )
+
+    storage.add_log(
+        "info",
+        "ai",
+        f"AI prompt mode: {'full' if is_big_task else 'compact'}",
+        {"message": user_message[:80]}
+    )
 
     messages = [{"role": "system", "content": dynamic_prompt}]
     messages.extend(history)
