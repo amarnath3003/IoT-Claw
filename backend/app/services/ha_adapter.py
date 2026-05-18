@@ -274,7 +274,7 @@ class HomeAssistantAdapter:
             if not self._running:
                 break
 
-            print(f"[HA] Reconnecting in {self._reconnect_delay:.0f}s…")
+            print(f"[HA] Reconnecting in {self._reconnect_delay:.0f}s...")
             await asyncio.sleep(self._reconnect_delay)
             self._reconnect_delay = min(self._reconnect_delay * 1.5, self._max_reconnect_delay)
 
@@ -283,7 +283,7 @@ class HomeAssistantAdapter:
     async def _connect_and_listen(self):
         import aiohttp
         url = f"ws://{self._host}:{self._port}/api/websocket"
-        print(f"[HA] Connecting to {url}…")
+        print(f"[HA] Connecting to {url}...")
 
         timeout = aiohttp.ClientTimeout(total=15)
         try:
@@ -302,7 +302,7 @@ class HomeAssistantAdapter:
                                 await ws.send_str(json.dumps({"type": "auth", "access_token": self._token}))
 
                             elif msg_type == "auth_ok":
-                                print("[HA] Authenticated ✓")
+                                print("[HA] Authenticated [OK]")
                                 self._connected = True
                                 self._reconnect_delay = 5.0   # reset back-off on success
                                 await self._broadcast({"type": "ha_status", "connected": True})
