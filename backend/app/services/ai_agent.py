@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 _api_key = os.getenv("OPENAI_API_KEY")
-_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+_model = os.getenv("OPENAI_MODEL", "gpt-5-nano")
 _api_key_missing = not _api_key or _api_key.startswith("sk-proj-REPLACE")
 client = None if _api_key_missing else AsyncOpenAI(api_key=_api_key)
 
@@ -1101,7 +1101,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
-                max_tokens=1024,
+                max_completion_tokens=1024,
             )
 
             choice = response.choices[0]
