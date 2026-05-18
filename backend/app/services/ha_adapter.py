@@ -162,6 +162,7 @@ class HomeAssistantAdapter:
         self._reconnect_delay: float = 5.0   # seconds, grows on failure
         self._max_reconnect_delay: float = 60.0
         self._running: bool = True
+        self._last_error: str = ""  # Track last connection error
 
         # Track pending calls: msg_id → asyncio.Future
         self._pending: dict[int, asyncio.Future] = {}
@@ -177,7 +178,7 @@ class HomeAssistantAdapter:
     def get_status(self) -> dict:
         devices = self.storage.get_all_devices()
         ha_count = sum(1 for d in devices.values() if d.get("ha_entity"))
-        return {
+        status = {
             "enabled":       True,
             "connected":     self._connected,
             "host":          self._host,
@@ -185,6 +186,9 @@ class HomeAssistantAdapter:
             "entity_count":  ha_count,
             "domain_filter": list(self._domain_filter) if self._domain_filter else "all",
         }
+        if self._last_error:
+            status["error"] = self._last_error
+        return status
 
     async def call_service(
         self,
@@ -247,8 +251,22 @@ class HomeAssistantAdapter:
         while self._running:
             try:
                 await self._connect_and_listen()
+            except asyncio.TimeoutError:
+                error_msg = f"Timeout: Could not reach {self._host}:{self._port}"
+                logger.error(f"[HA] {error_msg}")
+                self._last_error = error_msg
+                self.storage.add_log("error", "ha", error_msg, {"error": "timeout"})
+            except ConnectionRefusedError as e:
+                error_msg = f"Connection refused: {self._host}:{self._port} not accepting connections"
+                logger.error(f"[HA] {error_msg}")
+                self._last_error = error_msg
+                self.storage.add_log("error", "ha", error_msg, {"error": "connection_refused"})
             except Exception as e:
-                logger.warning(f"[HA] Connection error: {e}")
+                error_type = type(e).__name__
+                error_msg = f"{error_type}: {str(e)}"
+                logger.error(f"[HA] Connection error: {error_msg}")
+                self._last_error = error_msg
+                self.storage.add_log("error", "ha", f"Connection error: {error_msg}", {"error": error_type})
             finally:
                 self._connected = False
                 await self._broadcast({"type": "ha_status", "connected": False})
@@ -268,45 +286,58 @@ class HomeAssistantAdapter:
         print(f"[HA] Connecting to {url}…")
 
         timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.ws_connect(url) as ws:
-                self._ws = ws
-                print("[HA] WebSocket connected")
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.ws_connect(url) as ws:
+                    self._ws = ws
+                    print("[HA] WebSocket connected")
 
-                # Auth handshake
-                async for msg in ws:
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        data = json.loads(msg.data)
-                        msg_type = data.get("type")
+                    # Auth handshake
+                    async for msg in ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            data = json.loads(msg.data)
+                            msg_type = data.get("type")
 
-                        if msg_type == "auth_required":
-                            await ws.send_str(json.dumps({"type": "auth", "access_token": self._token}))
+                            if msg_type == "auth_required":
+                                await ws.send_str(json.dumps({"type": "auth", "access_token": self._token}))
 
-                        elif msg_type == "auth_ok":
-                            print("[HA] Authenticated ✓")
-                            self._connected = True
-                            self._reconnect_delay = 5.0   # reset back-off on success
-                            await self._broadcast({"type": "ha_status", "connected": True})
-                            # Initial state fetch + event subscription
-                            await self._fetch_and_register_states()
-                            await self._subscribe_events(ws)
+                            elif msg_type == "auth_ok":
+                                print("[HA] Authenticated ✓")
+                                self._connected = True
+                                self._reconnect_delay = 5.0   # reset back-off on success
+                                await self._broadcast({"type": "ha_status", "connected": True})
+                                # Initial state fetch + event subscription
+                                await self._fetch_and_register_states()
+                                await self._subscribe_events(ws)
 
-                        elif msg_type == "auth_invalid":
-                            logger.error("[HA] Authentication FAILED — check HA_TOKEN in .env")
-                            self.storage.add_log("error", "ha", "Home Assistant authentication failed — invalid token", {})
-                            return  # Don't retry on auth failure
+                            elif msg_type == "auth_invalid":
+                                logger.error("[HA] Authentication FAILED — check HA_TOKEN in .env")
+                                self.storage.add_log("error", "ha", "Home Assistant authentication failed — invalid token", {})
+                                return  # Don't retry on auth failure
 
-                        elif msg_type == "event":
-                            await self._handle_event(data)
+                            elif msg_type == "event":
+                                await self._handle_event(data)
 
-                        elif msg_type == "result":
-                            await self._handle_result(data)
+                            elif msg_type == "result":
+                                await self._handle_result(data)
 
-                    elif msg.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED):
-                        logger.warning(f"[HA] WebSocket closed: {msg.type}")
-                        break
+                        elif msg.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED):
+                            logger.warning(f"[HA] WebSocket closed: {msg.type}")
+                            break
 
-                self._ws = None
+                    self._ws = None
+        except aiohttp.ClientConnectorError as e:
+            logger.error(f"[HA] Network error: {self._host}:{self._port} unreachable - {e}")
+            raise
+        except aiohttp.ClientSSLError as e:
+            logger.error(f"[HA] SSL error connecting to {self._host}:{self._port} - {e}")
+            raise
+        except asyncio.TimeoutError:
+            logger.error(f"[HA] Timeout connecting to {self._host}:{self._port}")
+            raise
+        except Exception as e:
+            logger.error(f"[HA] Unexpected error: {type(e).__name__}: {e}")
+            raise
 
     # ── Discovery ─────────────────────────────────────────────────────────────
 

@@ -348,6 +348,80 @@ async def ha_status():
     return ha_adapter.get_status()
 
 
+@app.get("/ha/diagnose")
+async def ha_diagnose():
+    """Diagnostic endpoint to troubleshoot Home Assistant connectivity."""
+    import socket
+    import aiohttp
+    
+    enabled = os.getenv("HA_ENABLED", "false").lower() == "true"
+    ha_host = os.getenv("HA_HOST", "localhost")
+    ha_port = int(os.getenv("HA_PORT", "8123"))
+    ha_token = os.getenv("HA_TOKEN", "")
+    
+    diagnostics = {
+        "enabled": enabled,
+        "config": {
+            "host": ha_host,
+            "port": ha_port,
+            "token_present": bool(ha_token and not ha_token.startswith("eyJ")),  # Check if it's not the example token
+        },
+        "checks": {}
+    }
+    
+    if not enabled:
+        return {"status": "disabled", "diagnostics": diagnostics}
+    
+    # Check 1: DNS resolution
+    try:
+        socket.gethostbyname(ha_host)
+        diagnostics["checks"]["dns"] = {"status": "pass", "message": f"{ha_host} resolves"}
+    except socket.gaierror as e:
+        diagnostics["checks"]["dns"] = {"status": "fail", "message": f"Cannot resolve {ha_host}: {e}"}
+    
+    # Check 2: TCP connectivity
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        result = sock.connect_ex((ha_host, ha_port))
+        sock.close()
+        if result == 0:
+            diagnostics["checks"]["tcp"] = {"status": "pass", "message": f"Port {ha_port} is open"}
+        else:
+            diagnostics["checks"]["tcp"] = {"status": "fail", "message": f"Port {ha_port} is closed/unreachable"}
+    except Exception as e:
+        diagnostics["checks"]["tcp"] = {"status": "fail", "message": f"TCP check failed: {e}"}
+    
+    # Check 3: WebSocket connectivity (non-blocking)
+    try:
+        url = f"ws://{ha_host}:{ha_port}/api/websocket"
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            try:
+                async with session.ws_connect(url) as ws:
+                    msg = await asyncio.wait_for(ws.receive(), timeout=5)
+                    diagnostics["checks"]["websocket"] = {"status": "pass", "message": "WebSocket connects and receives"}
+            except asyncio.TimeoutError:
+                diagnostics["checks"]["websocket"] = {"status": "fail", "message": "WebSocket timeout (HA might be down)"}
+            except Exception as e:
+                diagnostics["checks"]["websocket"] = {"status": "fail", "message": f"WebSocket error: {type(e).__name__}"}
+    except Exception as e:
+        diagnostics["checks"]["websocket"] = {"status": "fail", "message": f"Cannot test WebSocket: {e}"}
+    
+    # Check 4: Token presence
+    if not ha_token or ha_token.startswith("eyJ"):
+        diagnostics["checks"]["token"] = {"status": "fail", "message": "No valid token or using example token"}
+    else:
+        diagnostics["checks"]["token"] = {"status": "pass", "message": "Token is set"}
+    
+    # Current adapter status
+    if ha_adapter:
+        status = ha_adapter.get_status()
+        diagnostics["adapter_status"] = status
+    
+    return diagnostics
+
+
 @app.post("/ha/entities/{entity_id:path}/set")
 async def ha_entity_set(entity_id: str, body: dict):
     """
