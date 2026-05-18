@@ -20,6 +20,12 @@ from app.services.mcp_client import MCPClient
 from app.services.telegram_bot import run_bot as run_telegram_bot
 from app.services.zigbee_adapter import ZigbeeAdapter
 from app.services.ha_adapter import HomeAssistantAdapter
+from app.services.autonomous_agent import (
+    AutonomousAgent,
+    get_recent_cycles,
+    get_all_settings,
+    update_settings,
+)
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -52,6 +58,12 @@ storage = Storage()
 mqtt = MQTTClient(storage=storage, ws_broadcast_fn=manager.broadcast)
 camera_service = SecurityCameraSimulator(storage=storage, ws_broadcast_fn=manager.broadcast)
 engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval, camera_service=camera_service, ws_broadcast_fn=manager.broadcast)
+autonomous = AutonomousAgent(
+    storage=storage,
+    mqtt=mqtt,
+    engine=engine,
+    ws_broadcast_fn=manager.broadcast,
+)
 edge_compiler = EdgeCompiler(storage=storage)
 mcp = MCPClient(mqtt=mqtt, storage=storage)
 # Link MCPClient's pending registry into the MQTT client for response routing
@@ -105,6 +117,8 @@ async def lifespan(app: FastAPI):
         print("[HA] HomeAssistantAdapter started")
 
     asyncio.create_task(engine.run())
+    autonomous.bind_loop(asyncio.get_running_loop())
+    asyncio.create_task(autonomous.run())
     asyncio.create_task(telemetry_cleanup())
     # Start Telegram bot (runs in background; no-ops gracefully if token missing)
     asyncio.create_task(
@@ -398,6 +412,42 @@ async def ha_call_service(body: dict):
 
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return result
+
+
+@app.get("/autonomous/status")
+async def autonomous_status():
+    """Return autonomous agent status and current settings."""
+    return autonomous.get_status()
+
+
+@app.get("/autonomous/cycles")
+async def autonomous_cycles(limit: int = Query(30, ge=1, le=200)):
+    """Return recent autonomous reasoning cycles."""
+    return get_recent_cycles(limit=limit)
+
+
+@app.post("/autonomous/trigger")
+async def autonomous_trigger():
+    """Manually trigger one autonomous reasoning cycle immediately."""
+    cycle = await autonomous.run_cycle()
+    return {"status": "triggered", "cycle": cycle}
+
+
+@app.patch("/autonomous/settings")
+async def autonomous_update_settings(body: dict):
+    """Update autonomous agent settings (enabled, interval, aggression, etc.)."""
+    allowed_keys = {"enabled", "interval", "aggression", "max_actions", "paused_until"}
+    filtered = {k: v for k, v in body.items() if k in allowed_keys}
+    if not filtered:
+        raise HTTPException(status_code=400, detail="No valid settings provided")
+    update_settings(filtered)
+    return {"status": "updated", "settings": get_all_settings()}
+
+
+@app.get("/autonomous/settings")
+async def autonomous_get_settings():
+    """Get all autonomous agent settings."""
+    return get_all_settings()
 
 
 @app.post("/ha/refresh")
