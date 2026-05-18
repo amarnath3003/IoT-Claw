@@ -7,6 +7,7 @@ import HAManager from './components/HAManager'
 import WorkflowEditor from './components/WorkflowEditor'
 import TemplateLibrary from './components/TemplateLibrary'
 import FlashDevice from './components/FlashDevice'
+import AutonomousClaw from './components/AutonomousClaw'
 import useWebSocket from './hooks/useWebSocket'
 import { zigbeePermitJoin } from './api'
 import './index.css'
@@ -24,6 +25,7 @@ const TABS = [
   { id: 'Templates',     icon: '⊟' },
   { id: 'Flash',         icon: '⚡' },
   { id: 'HomeAssistant', icon: '🏠' },
+  { id: 'Autonomous',  icon: '🧠' },
 ]
 
 export default function App() {
@@ -208,6 +210,7 @@ export default function App() {
             {activeTab === 'Templates'     && <TemplateLibrary />}
             {activeTab === 'Flash'         && <FlashDevice />}
             {activeTab === 'HomeAssistant' && <HAManager deviceStates={deviceStates} />}
+            {activeTab === 'Autonomous'    && <AutonomousClaw wsMessages={lastMessage} />}
           </div>
         </main>
       </div>
