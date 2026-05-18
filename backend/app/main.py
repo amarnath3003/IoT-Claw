@@ -75,7 +75,7 @@ ha_adapter = None
 async def telemetry_cleanup():
     while True:
         try:
-            from db import get_connection
+            from app.core.db import get_connection
             conn = get_connection()
             conn.execute("DELETE FROM telemetry WHERE ts < datetime('now', '-30 days')")
             conn.commit()

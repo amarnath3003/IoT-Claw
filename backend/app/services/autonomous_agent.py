@@ -526,7 +526,7 @@ AGENT PROFILE:
 
         start = datetime.now()
         self._cycle_count += 1
-        print(f"[Autonomous] ═══ Cycle #{self._cycle_count} starting ═══")
+        print(f"[Autonomous] === Cycle #{self._cycle_count} starting ===")
 
         context = self._build_context()
         decision = await self._call_llm(context)
@@ -589,7 +589,9 @@ AGENT PROFILE:
         print(
             f"[Autonomous] Cycle #{self._cycle_count} done in {duration_ms}ms "
             f"| mood={cycle['mood']} | confidence={cycle['confidence']}% "
-            f"| actions={executed_count}/{len(actions)}"
+            f"| actions={executed_count}/{len(actions)}",
+            end="\n",
+            flush=True
         )
 
         # Broadcast to WebSocket clients
@@ -607,7 +609,10 @@ AGENT PROFILE:
 
     async def run(self):
         """Main async loop. Runs until the server shuts down."""
-        print(f"[Autonomous] Agent starting. interval={self._get_interval()}s")
+        try:
+            print(f"[Autonomous] Agent starting. interval={self._get_interval()}s")
+        except Exception:
+            print("[Autonomous] Agent starting")
         await asyncio.sleep(15)  # Warm-up: let the system settle after startup
 
         while True:
