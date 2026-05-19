@@ -1153,12 +1153,14 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
 
     try:
         for _ in range(MAX_ROUNDS):
+            # Increase token budget for big/full prompts, keep compact prompts small to save tokens
+            max_tokens = 4096 if is_big_task else 1024
             response = await client.chat.completions.create(
                 model=_model,
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
-                max_completion_tokens=2048,
+                max_completion_tokens=max_tokens,
             )
 
             choice = response.choices[0]
