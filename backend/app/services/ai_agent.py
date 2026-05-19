@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 _api_key = os.getenv("OPENAI_API_KEY")
-_model = os.getenv("OPENAI_MODEL", "gpt-5-nano")
+_model = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
 _api_key_missing = not _api_key or _api_key.startswith("sk-proj-REPLACE")
 client = None if _api_key_missing else AsyncOpenAI(api_key=_api_key)
 
@@ -1153,25 +1153,34 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
 
     try:
         for _ in range(MAX_ROUNDS):
-            # Increase token budget for big/full prompts, keep compact prompts small to save tokens
-            max_tokens = 4096 if is_big_task else 1024
-            response = await client.chat.completions.create(
-                model=_model,
-                messages=messages,
-                tools=TOOLS,
-                tool_choice="auto",
-                max_completion_tokens=max_tokens,
-            )
+            kwargs: dict = {
+                "model": _model,
+                "messages": messages,
+                "tools": TOOLS,
+                "tool_choice": "auto",
+            }
+            if not is_big_task:
+                kwargs["max_completion_tokens"] = 3000
+            response = await client.chat.completions.create(**kwargs)
 
             choice = response.choices[0]
+            finish = choice.finish_reason
 
             # Model gave a text reply — done
-            if choice.finish_reason == "stop":
+            if finish == "stop":
                 storage.add_log("info", "ai", f"User: {user_message[:80]} → {len(tool_calls_log)} tool(s)")
                 return {"reply": choice.message.content, "tool_calls": tool_calls_log}
 
+            # Token limit hit — return whatever content the model produced
+            if finish == "length":
+                content = (choice.message.content or "").strip()
+                storage.add_log("warning", "ai", "AI hit token limit", {"message": user_message[:80], "is_big_task": is_big_task})
+                if content:
+                    return {"reply": content, "tool_calls": tool_calls_log}
+                return {"reply": "Response was cut short due to length. Try a simpler request.", "tool_calls": tool_calls_log}
+
             # Model wants to call tools
-            if choice.finish_reason == "tool_calls":
+            if finish == "tool_calls":
                 assistant_message = choice.message
                 messages.append(assistant_message)
 
@@ -1181,8 +1190,6 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                         tool_args = json.loads(tc.function.arguments)
                     except json.JSONDecodeError:
                         tool_args = {}
-
-                    # debug print removed; using structured logs instead
 
                     if tool_name in dispatch:
                         fn = dispatch[tool_name]
@@ -1205,7 +1212,8 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                 # Continue the loop — let the model decide if more tools are needed
                 continue
 
-            # Unexpected finish reason
+            # Unexpected finish reason — log and break
+            storage.add_log("warning", "ai", f"Unexpected finish_reason: {finish}", {"message": user_message[:80]})
             break
 
         return {"reply": "I ran into an issue processing your request.", "tool_calls": tool_calls_log}
