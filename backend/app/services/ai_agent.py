@@ -1182,7 +1182,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                     except json.JSONDecodeError:
                         tool_args = {}
 
-                    print(f"[AI] Tool: {tool_name} args={tool_args}")
+                    # debug print removed; using structured logs instead
 
                     if tool_name in dispatch:
                         fn = dispatch[tool_name]
@@ -1212,7 +1212,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
 
     except Exception as e:
         etype = type(e).__name__
-        print(f"[AI] Error: {etype}: {e}")
+        # debug print removed; error recorded via storage.add_log
         storage.add_log("error", "ai", f"AI error: {etype}: {str(e)[:100]}")
         if "RateLimitError" in etype:
             return {"reply": "I'm rate limited. Please wait a moment.", "tool_calls": []}
