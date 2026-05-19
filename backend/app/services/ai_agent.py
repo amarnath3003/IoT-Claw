@@ -621,6 +621,50 @@ Examples:
 ]
 
 
+# ── Tool subsets for selective injection ──────────────────────────────────────
+_TOOL_NAMES_BASIC    = {"control_device","blink_device","sequence_actions","set_device_brightness","read_sensor","list_devices","get_logs"}
+_TOOL_NAMES_MGMT     = {"register_device","delete_device"}
+_TOOL_NAMES_WORKFLOW = {"create_workflow","list_workflows","toggle_workflow","delete_workflow","execute_workflow"}
+_TOOL_NAMES_EDGE     = {"push_script","push_script_group","rollback_script","get_device_capabilities","call_hardware_tool"}
+_TOOL_NAMES_ZIGBEE   = {"zigbee_set","zigbee_permit_join","zigbee_remove_device","zigbee_group_set","zigbee_read_sensor"}
+_TOOL_NAMES_HA       = {"ha_control","ha_list_entities","ha_call_service"}
+
+_TOOLS_BY_NAME = {t["function"]["name"]: t for t in TOOLS}
+
+def _select_tools(message: str) -> list:
+    """Return minimal tool subset needed for this message. Reduces input tokens → faster TTFT."""
+    msg = message.lower()
+    names = set(_TOOL_NAMES_BASIC)
+    if any(k in msg for k in {"register","add device","new device","delete device","remove device"}):
+        names |= _TOOL_NAMES_MGMT
+    if any(k in msg for k in {"workflow","automation","trigger","schedule","when ","if temp","secret code","if motion"}):
+        names |= _TOOL_NAMES_WORKFLOW
+    if any(k in msg for k in {"esp32","micropython","script","firmware","push script","edge","pin ","adc","rollback"}):
+        names |= _TOOL_NAMES_EDGE
+    if any(k in msg for k in {"zigbee","pair","pairing","z2m","colorloop","breathe","color temp"}):
+        names |= _TOOL_NAMES_ZIGBEE
+    if any(k in msg for k in {"home assistant","ha_","entity","climate","thermostat","scene","hvac","blind","cover"}):
+        names |= _TOOL_NAMES_HA
+    # Big/ambiguous tasks get full tool set for safety
+    if _is_big_task(message):
+        return TOOLS
+    return [_TOOLS_BY_NAME[n] for n in names if n in _TOOLS_BY_NAME]
+
+
+async def _exec_tool(tc_id: str, tool_name: str, tool_args: dict, dispatch: dict) -> tuple:
+    """Execute a single tool call and return (tc_id, tool_name, tool_args, result)."""
+    import inspect
+    if tool_name in dispatch:
+        fn = dispatch[tool_name]
+        if inspect.iscoroutinefunction(fn):
+            result = await fn(**tool_args)
+        else:
+            result = fn(**tool_args)
+    else:
+        result = {"error": f"Unknown tool: {tool_name}"}
+    return tc_id, tool_name, tool_args, result
+
+
 def _fuzzy_match(name: str, devices: dict) -> str | None:
     """Return best matching device name or None."""
     if name in devices:
@@ -1144,19 +1188,21 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
         {"message": user_message[:80]}
     )
 
+    active_tools = _select_tools(user_message)
+    trimmed_history = history[-12:] if len(history) > 12 else history
     messages = [{"role": "system", "content": dynamic_prompt}]
-    messages.extend(history)
+    messages.extend(trimmed_history)
     messages.append({"role": "user", "content": user_message})
 
     tool_calls_log = []
-    MAX_ROUNDS = 15  # prevent infinite loops
+    MAX_ROUNDS = 15
 
     try:
         for _ in range(MAX_ROUNDS):
             kwargs: dict = {
                 "model": _model,
                 "messages": messages,
-                "tools": TOOLS,
+                "tools": active_tools,
                 "tool_choice": "auto",
             }
             if not is_big_task:
@@ -1166,12 +1212,10 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
             choice = response.choices[0]
             finish = choice.finish_reason
 
-            # Model gave a text reply — done
             if finish == "stop":
                 storage.add_log("info", "ai", f"User: {user_message[:80]} → {len(tool_calls_log)} tool(s)")
                 return {"reply": choice.message.content, "tool_calls": tool_calls_log}
 
-            # Token limit hit — return whatever content the model produced
             if finish == "length":
                 content = (choice.message.content or "").strip()
                 storage.add_log("warning", "ai", "AI hit token limit", {"message": user_message[:80], "is_big_task": is_big_task})
@@ -1179,40 +1223,34 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                     return {"reply": content, "tool_calls": tool_calls_log}
                 return {"reply": "Response was cut short due to length. Try a simpler request.", "tool_calls": tool_calls_log}
 
-            # Model wants to call tools
             if finish == "tool_calls":
                 assistant_message = choice.message
                 messages.append(assistant_message)
 
+                # Parse all tool calls first
+                parsed = []
                 for tc in assistant_message.tool_calls:
-                    tool_name = tc.function.name
                     try:
                         tool_args = json.loads(tc.function.arguments)
                     except json.JSONDecodeError:
                         tool_args = {}
+                    parsed.append((tc.id, tc.function.name, tool_args))
 
-                    if tool_name in dispatch:
-                        fn = dispatch[tool_name]
-                        import inspect
-                        if inspect.iscoroutinefunction(fn):
-                            result = await fn(**tool_args)
-                        else:
-                            result = fn(**tool_args)
-                    else:
-                        result = {"error": f"Unknown tool: {tool_name}"}
+                # Execute all tools in parallel
+                results = await asyncio.gather(*[
+                    _exec_tool(tc_id, name, args, dispatch)
+                    for tc_id, name, args in parsed
+                ])
 
+                for tc_id, tool_name, tool_args, result in results:
                     tool_calls_log.append({"tool": tool_name, "args": tool_args, "result": result})
-
                     messages.append({
                         "role": "tool",
-                        "tool_call_id": tc.id,
+                        "tool_call_id": tc_id,
                         "content": json.dumps(result)
                     })
-
-                # Continue the loop — let the model decide if more tools are needed
                 continue
 
-            # Unexpected finish reason — log and break
             storage.add_log("warning", "ai", f"Unexpected finish_reason: {finish}", {"message": user_message[:80]})
             break
 
@@ -1220,10 +1258,162 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
 
     except Exception as e:
         etype = type(e).__name__
-        # debug print removed; error recorded via storage.add_log
         storage.add_log("error", "ai", f"AI error: {etype}: {str(e)[:100]}")
         if "RateLimitError" in etype:
             return {"reply": "I'm rate limited. Please wait a moment.", "tool_calls": []}
         elif "APIConnectionError" in etype:
             return {"reply": "Can't reach the AI service. Check your connection.", "tool_calls": []}
         return {"reply": f"AI error: {str(e)}", "tool_calls": []}
+
+
+async def run_chat_stream(user_message: str, history: list, mqtt, storage, engine=None):
+    """Streaming agentic loop. Yields SSE-encoded lines for token-by-token delivery."""
+    dispatch = build_tool_dispatch(mqtt, storage, engine)
+
+    fired = []
+    if engine:
+        fired = engine.check_chat_trigger(user_message)
+        if fired:
+            names = ", ".join(f["workflow"] for f in fired)
+            storage.add_log("success", "engine", f"Chat trigger fired: {names}", {"message": user_message})
+
+    if client is None:
+        if fired:
+            names = ", ".join(f["workflow"] for f in fired)
+            msg = f"Triggered workflow: {names}. Set OPENAI_API_KEY to enable full AI chat."
+        else:
+            msg = "AI chat is disabled. Set OPENAI_API_KEY in backend/.env to enable natural-language control."
+        yield f"data: {json.dumps({'type': 'token', 'content': msg})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'tool_calls': []})}\n\n"
+        return
+
+    is_big_task = _is_big_task(user_message)
+    dynamic_prompt = SYSTEM_PROMPT if is_big_task else COMPACT_SYSTEM_PROMPT
+    if mqtt and hasattr(mqtt, 'is_connected') and _needs_device_context(user_message):
+        state = "ONLINE" if mqtt.is_connected else "OFFLINE"
+        dynamic_prompt += (
+            f"\n\n[SYSTEM CONTEXT: The internal MQTT Broker is currently {state}. "
+            "If it is OFFLINE, device commands will be queued but not execute immediately. "
+            "Politely inform the user if this happens.]"
+        )
+
+    active_tools = _select_tools(user_message)
+    trimmed_history = history[-12:] if len(history) > 12 else history
+    messages = [{"role": "system", "content": dynamic_prompt}]
+    messages.extend(trimmed_history)
+    messages.append({"role": "user", "content": user_message})
+
+    tool_calls_log = []
+    MAX_ROUNDS = 15
+
+    try:
+        for _ in range(MAX_ROUNDS):
+            kwargs: dict = {
+                "model": _model,
+                "messages": messages,
+                "tools": active_tools,
+                "tool_choice": "auto",
+                "stream": True,
+            }
+            if not is_big_task:
+                kwargs["max_completion_tokens"] = 3000
+
+            stream = await client.chat.completions.create(**kwargs)
+
+            content_parts = []
+            tool_calls_acc: dict = {}
+            finish_reason = None
+
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+                delta = choice.delta
+
+                if delta.content:
+                    content_parts.append(delta.content)
+                    yield f"data: {json.dumps({'type': 'token', 'content': delta.content})}\n\n"
+
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_acc:
+                            tool_calls_acc[idx] = {"id": "", "name": "", "arguments": ""}
+                        if tc.id:
+                            tool_calls_acc[idx]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_calls_acc[idx]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_calls_acc[idx]["arguments"] += tc.function.arguments
+
+            if finish_reason == "stop":
+                storage.add_log("info", "ai", f"User: {user_message[:80]} → {len(tool_calls_log)} tool(s)")
+                yield f"data: {json.dumps({'type': 'done', 'tool_calls': tool_calls_log})}\n\n"
+                return
+
+            if finish_reason == "length":
+                storage.add_log("warning", "ai", "AI hit token limit (stream)", {"message": user_message[:80]})
+                if not content_parts:
+                    yield f"data: {json.dumps({'type': 'token', 'content': 'Response cut short. Try a simpler request.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'tool_calls': tool_calls_log})}\n\n"
+                return
+
+            if finish_reason == "tool_calls":
+                tcs = [tool_calls_acc[i] for i in sorted(tool_calls_acc.keys())]
+
+                # Notify client of pending tool calls
+                for tc in tcs:
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': tc['name']})}\n\n"
+
+                # Reconstruct assistant message for context
+                messages.append({
+                    "role": "assistant",
+                    "content": "".join(content_parts) or None,
+                    "tool_calls": [
+                        {"id": tc["id"], "type": "function",
+                         "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+                        for tc in tcs
+                    ],
+                })
+
+                # Execute tools in parallel
+                parsed = []
+                for tc in tcs:
+                    try:
+                        args = json.loads(tc["arguments"])
+                    except json.JSONDecodeError:
+                        args = {}
+                    parsed.append((tc["id"], tc["name"], args))
+
+                results = await asyncio.gather(*[
+                    _exec_tool(tc_id, name, args, dispatch)
+                    for tc_id, name, args in parsed
+                ])
+
+                for tc_id, tool_name, tool_args, result in results:
+                    tool_calls_log.append({"tool": tool_name, "args": tool_args, "result": result})
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": json.dumps(result),
+                    })
+                continue
+
+            storage.add_log("warning", "ai", f"Unexpected finish_reason: {finish_reason}", {"message": user_message[:80]})
+            break
+
+        yield f"data: {json.dumps({'type': 'error', 'content': 'I ran into an issue processing your request.'})}\n\n"
+
+    except Exception as e:
+        etype = type(e).__name__
+        storage.add_log("error", "ai", f"AI stream error: {etype}: {str(e)[:100]}")
+        if "RateLimitError" in etype:
+            msg = "I'm rate limited. Please wait a moment."
+        elif "APIConnectionError" in etype:
+            msg = "Can't reach the AI service. Check your connection."
+        else:
+            msg = f"AI error: {str(e)}"
+        yield f"data: {json.dumps({'type': 'error', 'content': msg})}\n\n"

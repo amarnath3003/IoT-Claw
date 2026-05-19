@@ -1,6 +1,7 @@
 import csv
 import io
 from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-from app.services.ai_agent import run_chat
+from app.services.ai_agent import run_chat, run_chat_stream
 from app.services.mqtt_client import MQTTClient
 from app.core.storage import Storage
 from app.services.execution_engine import ExecutionEngine
@@ -161,6 +162,24 @@ async def chat(body: dict):
     result = await run_chat(user_message, history, mqtt, storage, engine=engine)
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return result
+
+
+@app.post("/chat/stream")
+async def chat_stream(body: dict):
+    """Streaming SSE endpoint — yields tokens as they arrive."""
+    user_message = body.get("message", "")
+    history = body.get("history", [])
+
+    async def generate():
+        async for chunk in run_chat_stream(user_message, history, mqtt, storage, engine=engine):
+            yield chunk
+        await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/state")

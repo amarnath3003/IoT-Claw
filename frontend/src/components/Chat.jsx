@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { sendChat } from '../api'
+import { API_BASE } from '../api'
 
 const QUICK_PROMPTS = [
   { label: 'List devices',      text: 'List all my registered devices and their current status.' },
@@ -197,7 +197,8 @@ export default function Chat({ messages, setMessages }) {
 
     const userMsg     = { role: 'user', content: text }
     const newMessages = [...messages, userMsg]
-    setMessages(newMessages)
+    const aiPlaceholder = { role: 'assistant', content: '', toolCalls: [], _streaming: true }
+    setMessages([...newMessages, aiPlaceholder])
     setInput('')
     setCharCount(0)
     setLoading(true)
@@ -205,21 +206,70 @@ export default function Chat({ messages, setMessages }) {
 
     try {
       const history = newMessages.slice(1, -1).map(m => ({ role: m.role, content: m.content }))
-      const res       = await sendChat(text, history)
-      const toolCalls = (res.data.tool_calls || []).map(c => c.tool)
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: res.data.reply || 'Done.',
-          toolCalls,
-        },
-      ])
+      const response = await fetch(`${API_BASE}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history }),
+      })
+
+      const reader  = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer    = ''
+      let accumulated = ''
+      let toolCalls   = []
+
+      const updateLast = (patch) =>
+        setMessages(prev => {
+          const updated = [...prev]
+          const last = updated[updated.length - 1]
+          if (last?._streaming) updated[updated.length - 1] = { ...last, ...patch }
+          return updated
+        })
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop()
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const evt = JSON.parse(line.slice(6))
+            if (evt.type === 'token') {
+              accumulated += evt.content
+              updateLast({ content: accumulated })
+            } else if (evt.type === 'tool_call') {
+              toolCalls = [...toolCalls, evt.tool]
+              updateLast({ toolCalls })
+            } else if (evt.type === 'error') {
+              updateLast({ content: evt.content || 'Error processing request.', _streaming: false })
+            } else if (evt.type === 'done') {
+              updateLast({ _streaming: false, content: accumulated || 'Done.' })
+            }
+          } catch { /* malformed chunk — skip */ }
+        }
+      }
+
+      // Finalize in case 'done' event wasn't received
+      setMessages(prev => {
+        const updated = [...prev]
+        const last = updated[updated.length - 1]
+        if (last?._streaming) updated[updated.length - 1] = { ...last, _streaming: false, content: accumulated || 'Done.' }
+        return updated
+      })
     } catch {
-      setMessages(prev => [
-        ...prev,
-        { role: 'assistant', content: 'Error connecting to backend. Is the server running?', toolCalls: [] },
-      ])
+      setMessages(prev => {
+        const updated = [...prev]
+        const last = updated[updated.length - 1]
+        if (last?._streaming) {
+          updated[updated.length - 1] = { role: 'assistant', content: 'Error connecting to backend. Is the server running?', toolCalls: [] }
+        } else {
+          return [...prev, { role: 'assistant', content: 'Error connecting to backend. Is the server running?', toolCalls: [] }]
+        }
+        return updated
+      })
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
