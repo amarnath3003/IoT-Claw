@@ -10,7 +10,7 @@
   [![license MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](#)
   [![MQTT First](https://img.shields.io/badge/architecture-MQTT--First-blue.svg?style=flat-square)](#)
 
-  [Home](#) | [Docs](#) | [Online Flashing](#) | [Build from Source](#) | [简体中文](#)
+
 </div>
 
 ---
