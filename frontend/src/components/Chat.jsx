@@ -105,7 +105,21 @@ function MessageBubble({ msg }) {
             }),
           }}
         >
-          <MessageContent content={msg.content} />
+          {msg._streaming && !msg.content ? (
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center', height: 20 }}>
+              {[0, 160, 320].map(d => (
+                <span key={d} style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: 'var(--accent)', boxShadow: 'var(--glow-sm)',
+                  display: 'inline-block',
+                  animation: 'typingDot 1.2s ease-in-out infinite',
+                  animationDelay: `${d}ms`,
+                }} />
+              ))}
+            </div>
+          ) : (
+            <MessageContent content={msg.content} />
+          )}
         </div>
 
         {/* tool calls */}
@@ -116,21 +130,23 @@ function MessageBubble({ msg }) {
         )}
 
         {/* copy button (appears on hover via CSS class) */}
-        <button
-          onClick={copy}
-          className="msg-copy-btn"
-          title="Copy"
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--text-muted)', fontSize: 10,
-            padding: '2px 6px', borderRadius: 4,
-            fontFamily: 'JetBrains Mono, monospace',
-            letterSpacing: '0.04em',
-            transition: 'color 0.15s',
-          }}
-        >
-          {copied ? '✓ copied' : 'copy'}
-        </button>
+        {!msg._streaming && msg.content && (
+          <button
+            onClick={copy}
+            className="msg-copy-btn"
+            title="Copy"
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', fontSize: 10,
+              padding: '2px 6px', borderRadius: 4,
+              fontFamily: 'JetBrains Mono, monospace',
+              letterSpacing: '0.04em',
+              transition: 'color 0.15s',
+            }}
+          >
+            {copied ? '✓ copied' : 'copy'}
+          </button>
+        )}
       </div>
 
       {/* user avatar */}
@@ -424,8 +440,6 @@ export default function Chat({ messages, setMessages }) {
             {messages.map((msg, i) => (
               <MessageBubble key={`${msg.role}-${i}`} msg={msg} />
             ))}
-
-            {loading && <TypingIndicator />}
 
             {/* scroll anchor */}
             <div ref={bottomRef} style={{ height: 1 }} />
