@@ -1,434 +1,202 @@
-# 🤖 IoT Claw - Intelligent IoT Automation Platform
+<div align="center">
+  <img src="./frontend/public/logo.jpg" alt="IoT-Claw Logo" width="130" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);" />
 
-> Control your smart home and IoT devices with **natural language AI** — no complicated configurations required.
+  # IoT-Claw 🦞
+  ### AI Agent Framework & Smart Home Automation Platform
 
-IoT Claw is a full-stack IoT automation platform that bridges the gap between physical devices and intelligent automation. Control lights, fans, cameras, sensors, and custom devices using conversational AI, visual workflows, and real-time monitoring from a sleek control dashboard.
+  `💬 Chat as Creation` · `🚀 Millisecond Response` · `🧩 Smart and Extensible` · `🧠 Autonomous Learning`
 
-## ✨ Key Features
+  [![runs on ESP32](https://img.shields.io/badge/runs%20on-ESP32%20Series-red.svg?style=flat-square)](#)
+  [![license MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](#)
+  [![MQTT First](https://img.shields.io/badge/architecture-MQTT--First-blue.svg?style=flat-square)](#)
 
-### 🎯 AI-Powered Device Control
-- **Natural Language Interface** — "Turn on the living room light" or "Blink the LED 3 times"
-- **Intent Recognition** — Understands context and device relationships automatically
-- **Multi-Step Automation** — "Turn on fan, wait 10 seconds, turn off" in a single command
-- **Smart Device Matching** — Automatically infers which device you're referring to
+  [Home](#) | [Docs](#) | [Online Flashing](#) | [Build from Source](#) | [简体中文](#)
+</div>
 
-### 📱 Comprehensive Device Support
-- **Switches & Dimmers** — Control lights, fans, pumps, and relays
-- **Sensors** — Real-time temperature, humidity, motion, and custom sensor readings
-- **Security Cameras** — Built-in face and body detection with Telegram alerts
-- **Custom Devices** — Easily add any MQTT-enabled device via the dashboard
-- **ESP32 Hardware** — Out-of-the-box Arduino sketches for instant hardware integration
+---
 
-### 🔄 Visual Workflow Builder
-- **Drag-and-drop Workflow Designer** — Create complex automations visually
-- **Trigger Types** — Schedule (time-based), Sensor (threshold-based), Chat (voice command)
-- **Multi-Step Sequences** — Chain device actions, delays, and conditions
-- **Real-time Execution** — Workflows run instantly with WebSocket state sync
+**IoT-Claw** is a next-generation **Chat-to-Creation AI Agent framework** and automation controller for smart homes and IoT devices. It defines device behavior through conversation and completes the full loop of sensing, decision-making, and execution locally. 
 
-### 🎨 Modern Control Dashboard
-- **Neumorphic Design System** — Hardware-inspired interface with glass morphism effects
-- **Real-time Status Updates** — WebSocket-powered live device state
-- **Device Management** — Register, configure, and monitor all devices from one place
-- **Chat History** — Keep track of all automation requests and responses
-- **Dark Terminal Aesthetic** — Optimized for extended monitoring sessions
+Inspired by the OpenClaw concept, IoT-Claw is lightweight, intelligent, and continuously evolving. With just an ESP32-series chip (or standard Zigbee/MQTT/Home Assistant devices) and our sleek, hardware-inspired neumorphic dashboard, you can build, simulate, flash, and command your own intelligent automation ecosystem in seconds.
 
-### 🔌 MQTT-First Architecture
-- **Broker Agnostic** — Works with any MQTT broker (Mosquitto, HiveMQ, CloudMQTT)
-- **Topic-Based Organization** — Standard topic structure for easy device mapping
-- **Retained State** — Devices always report their current state
-- **Local Network Support** — Control devices over LAN without internet dependency
+---
 
-## 🚀 Quick Start
+## 📐 System Architecture
 
-### Prerequisites
-- **Python 3.8+** (Backend)
-- **Node.js 16+** (Frontend)
-- **MQTT Broker** (Mosquitto recommended)
-- **OpenAI API Key** (for AI agent)
-- **ESP32 Development Board** (optional, for hardware integration)
+IoT-Claw leverages a highly responsive, event-driven local architecture. The AI Agent coordinates real-time data from MQTT, Home Assistant, and browser Web Serial, routing critical updates instantly to the user and their connected Telegram alert channels.
 
-### Installation
+```mermaid
+graph TD
+    User([User Chat / UI]) -->|WebSocket / HTTP| Backend[FastAPI Server & AI Agent]
+    Backend -->|OpenAI API| LLM[LLM Brain]
+    Backend -->|MQTT Protocol| Broker[Mosquitto Broker]
+    Backend -->|WebSockets| HomeAssistant[Home Assistant API]
+    
+    Broker <-->|State & Cmds| ESP32[ESP32 Controllers]
+    Broker <-->|State & Cmds| Zigbee[Zigbee2MQTT Devices]
+    
+    Backend -->|Telegram Bot API| Telegram[Telegram Chat Alerts]
+    Browser[Browser / Web Serial] -->|Direct USB Flashing| ESP32
+```
 
-#### 1. Clone & Install Backend
+---
+
+## ⚡ Core Capabilities
+
+### 💬 Chat as Creation — Streaming AI Agent
+Control your home via fluid, conversational commands. The AI Agent automatically infers device intents, coordinates complex operations, and calls custom backend tools in real time.
+* **Token-by-Token Streaming:** Watch the AI formulate responses in real-time with zero latency.
+* **Intelligent Tool-Calling:** The agent dynamically binds tools to read device states, register devices, and configure automation rules.
+* **Multi-Step Execution:** Queue complex actions automatically: *"Turn on the bedroom fan, wait 15 seconds, then turn on the light."*
+
+### 🧠 Autonomous Claw — The Agentic Sandbox
+Step into the future with a fully autonomous playground where the AI Agent operates on a self-improving execution loop.
+* **Device Discovery:** Automatically scans your MQTT and Home Assistant registries to discover unconfigured hardware.
+* **Self-Correcting Action Loops:** Set high-level goals (*"Optimize climate control for the living room"*), and watch the AI write, test, and debug scripts until the objective is met.
+* **Virtual Experiments:** Safe sandbox environment to model complex home rules before committing them to physical hardware.
+
+### 🔌 Visual Drag-and-Drop Workflow Builder
+Say goodbye to complex configuration files and YAML scripts. IoT-Claw features a state-of-the-art node editor built on `@xyflow/react` (React Flow).
+* **Multiple Triggers:** Create routines that trigger on **Schedules** (time-based), **Sensor Thresholds** (temperature/humidity), or custom **Chat Commands**.
+* **Flexible Logic:** Chain delay nodes, conditional checks, action nodes, and external alert triggers together.
+* **Live Execution Sync:** Monitor active workflows as they execute node-by-node with glowing visual status paths.
+
+### ⚡ Web Serial Online Flashing
+Flash custom IoT-Claw firmware to your ESP32 devices directly from the browser — no Arduino IDE or CLI tools required!
+* **Plug & Play:** Connect your ESP32 via USB and click **Connect** on the dashboard.
+* **Browser Flashing:** Uses the Web Serial API to upload pre-compiled binary firmware instantly.
+* **Dynamic Config Injection:** Auto-configures WiFi credentials and your local MQTT broker address directly into the device during the flashing process.
+
+### 🏠 First-Class Home Assistant Adapter
+Unify your entire smart home. IoT-Claw integrates natively with **Home Assistant** to control over 2,500 brands out of the box.
+* **Instant Import:** Discovers and maps all HA entities (lights, switches, media players, locks, covers, fans) automatically.
+* **Bi-directional WebSocket Sync:** Any changes made in Home Assistant or physically in the room reflect instantly on your Neumorphic Console.
+
+### 🔔 Integrated Telegram Alerts
+Stay informed no matter where you are. IoT-Claw routes critical alerts directly to your personal Telegram chat.
+* **Security Feeds:** Receives motion and face detection capture frames from local security cameras.
+* **Critical Alerts:** Notifies you immediately if sensor values spike or hardware goes offline.
+* **Workflow Logs:** Dispatches summaries of successfully triggered automation routines.
+
+---
+
+## 🎨 Modern Hardware Neumorphic UI
+
+The control console features a dark, immersive, hardware-inspired neumorphic design system:
+* **Deep Space Contrast:** Sleek `#1a1d21` backgrounds with soft bevels and inset shadow wells.
+* **Vibrant LED Accents:** Glow-enhanced indicators (green for online, amber for thinking, red for offline).
+* **Glassmorphism Panels:** Semi-transparent frosted layers that create depth and visual structure.
+* **JetBrains Mono Typography:** Fully optimized terminal fonts for debug logs, code blocks, and data output.
+
+---
+
+## 🚀 Quick Start Guide
+
+> [!IMPORTANT]
+> To use the AI capabilities, you will need a valid **OpenAI API Key**. For local communication, a running **MQTT Broker** (e.g. Mosquitto) is required.
+
+### 📦 Installation & Setup
+
+#### 1. Configure the Backend
+Clone the repository and prepare the Python environment:
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+venv\Scripts\activate  # On macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### 2. Configure Environment
-Create `backend/.env`:
+Create a `backend/.env` file with your configuration:
 ```env
-OPENAI_API_KEY=sk-proj-your-key-here
+OPENAI_API_KEY=sk-proj-your-openai-api-key
 MQTT_BROKER_HOST=localhost
 MQTT_BROKER_PORT=1883
 STORAGE_FILE=storage.json
-EXECUTION_ENGINE_INTERVAL=5
+EXECUTION_ENGINE_INTERVAL=2
+
+# Home Assistant (Optional)
+HA_HOST=192.168.1.150
+HA_PORT=8123
+HA_TOKEN=your-long-lived-access-token
+
+# Telegram Alert Configuration (Optional)
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+TELEGRAM_CHAT_ID=your-chat-id
 ```
 
-#### 3. Start MQTT Broker
+Start the FastAPI application:
 ```bash
-# Using Mosquitto (Windows)
-mosquitto -c mosquitto.conf
+python main.py
+```
+The API server will launch at `http://localhost:8000`.
 
-# Or Docker
+#### 2. Run the MQTT Broker
+Ensure Mosquitto is running on your system:
+```bash
+# Using Docker
 docker run -it -p 1883:1883 eclipse-mosquitto
 ```
 
-#### 4. Start Backend
-```bash
-cd backend
-python main.py
-```
-Backend runs on `http://localhost:8000`
-
-#### 5. Install & Start Frontend
+#### 3. Start the Neumorphic Web Console
+Navigate to the frontend directory, install dependencies, and launch Vite:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Frontend runs on `http://localhost:5173`
-
-#### 6. Add Devices
-Choose one method:
-
-**Via Chat:**
-```
-Register a new device: light_control_1 in the living room
-```
-
-**Via API:**
-```bash
-curl -X POST http://localhost:8000/devices \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "light_control_1",
-    "topic_base": "home/living_room/light",
-    "type": "switch",
-    "location": "living room",
-    "description": "Main ceiling light"
-  }'
-```
-
-**Via Dashboard:**
-Use the Device Manager UI on the frontend
-
-## 🛠️ Hardware Setup
-
-### ESP32 MQTT Configuration
-
-**Wiring (for dual LED control):**
-- GPIO 26 → Resistor (220Ω) → LED1 Anode → LED1 Cathode → GND
-- GPIO 27 → Resistor (220Ω) → LED2 Anode → LED2 Cathode → GND
-
-**Upload Sketch:**
-1. Open `hardware/esp32_dual_led_mqtt/esp32_dual_led_mqtt.ino` in Arduino IDE
-2. Replace:
-   - `YOUR_WIFI_NAME` with your WiFi SSID
-   - `YOUR_WIFI_PASSWORD` with your WiFi password
-   - `192.168.1.100` with your PC's LAN IP (check with `ipconfig`)
-3. Install `PubSubClient` library (Tools → Manage Libraries)
-4. Upload to ESP32
-
-**Verify Connection:**
-```bash
-mosquitto_sub -h localhost -t home/hall/#
-```
-
-Then via chat: *"Turn on light_control_1"*
-
-Expected output:
-```
-home/hall/light/set ON
-home/hall/light/state ON
-```
-
-## 🏠 Home Assistant Integration
-
-IoT-Claw can integrate with **Home Assistant** to control all your HA entities directly through the dashboard and AI commands. All HA devices are auto-imported and synced in real-time.
-
-**Supported Domains:** Lights, switches, climate, fans, covers, locks, media players, cameras, scenes, and more.
-
-**Quick Setup:**
-1. Generate a long-lived access token in Home Assistant
-2. Add environment variables to `backend/.env`:
-   ```env
-   HA_HOST=192.168.1.100
-   HA_PORT=8123
-   HA_TOKEN=eyJhbGc...
-   ```
-3. Restart backend → All HA entities appear in IoT-Claw
-
-**Full Guide:** See [HOME_ASSISTANT_SETUP.md](HOME_ASSISTANT_SETUP.md) for detailed setup, configuration, troubleshooting, and advanced options.
-
-## 💬 Chat Examples
-
-### Device Control
-```
-User: Turn on the living room light
-Agent: ✓ Turned on living_room_light
-
-User: Dim the bedroom light to 40%
-Agent: ✓ Set bedroom_light brightness to 40%
-
-User: Blink the red LED 5 times
-Agent: ✓ Blinking red_led 5 times
-```
-
-### Automation
-```
-User: Create a morning routine that turns on all lights at 7 AM
-Agent: ✓ Created workflow: morning_routine
-        Trigger: Schedule 07:00
-        Actions: [turn on living_room_light, turn on bedroom_light]
-
-User: Turn on the fan and turn it off after 10 seconds
-Agent: ✓ Executed sequence
-        1. Turned on fan
-        2. Wait 10 seconds
-        3. Turned off fan
-```
-
-### Status & Monitoring
-```
-User: What devices do I have?
-Agent: You have 5 devices:
-       • living_room_light (switch) - ON
-       • bedroom_light (dimmable_switch) - OFF
-       • ceiling_fan (switch) - ON
-       • temperature_sensor (sensor) - 24.5°C
-       • security_camera (camera) - ONLINE
-
-User: Read the temperature
-Agent: Current temperature: 24.5°C (comfortable)
-```
-
-## 📁 Project Structure
-
-```
-IoT-Claw/
-├── backend/
-│   ├── main.py                 # FastAPI app & endpoints
-│   ├── ai_agent.py             # OpenAI integration & chat logic
-│   ├── mqtt_client.py          # MQTT publish/subscribe
-│   ├── storage.py              # Device registry & persistence
-│   ├── execution_engine.py     # Workflow execution scheduler
-│   ├── security_camera.py      # Camera simulator & detection
-│   └── requirements.txt        # Python dependencies
-│
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx             # Main app component
-│   │   ├── pages/              # Dashboard, device mgmt, chat
-│   │   ├── components/         # Neumorphic UI components
-│   │   └── styles/             # Tailwind & design system
-│   ├── package.json            # Node dependencies
-│   └── vite.config.js          # Build configuration
-│
-├── hardware/
-│   ├── ESP32_SETUP.md          # Hardware guide
-│   └── esp32_dual_led_mqtt/    # Arduino sketch
-│
-└── README.md                   # This file
-```
-
-## 🔌 API Reference
-
-### Device Management
-
-**Get All Devices**
-```bash
-GET /state
-```
-
-**Register Device**
-```bash
-POST /devices
-{
-  "name": "living_room_light",
-  "topic_base": "home/living_room/light",
-  "type": "switch",
-  "location": "living room",
-  "description": "Main ceiling light"
-}
-```
-
-**Control Device**
-```bash
-POST /chat
-{
-  "message": "Turn on living_room_light",
-  "history": []
-}
-```
-
-### WebSocket
-
-**Real-time State Updates**
-```javascript
-const ws = new WebSocket('ws://localhost:8000/ws');
-ws.onmessage = (event) => {
-  const message = JSON.parse(event.data);
-  if (message.type === 'state') {
-    console.log('Devices:', message.data);
-  }
-};
-```
-
-## 🎨 Design System
-
-The UI uses a **Neumorphic Hardware Console** aesthetic:
-- Deep black backgrounds (`#1a1d21`)
-- Warm orange accents (`#ff6b00`)
-- Glass morphism effects for depth
-- Monospace terminal fonts for logs
-- LED-style status indicators with glows
-
-See `skill.md` for the complete design component library.
-
-## 🔐 Security Features
-
-- **API Key Management** — Secure OpenAI API key storage via `.env`
-- **CORS Protection** — Restricted to whitelisted frontend origins
-- **Local MQTT** — No cloud dependency; devices communicate locally
-- **State Persistence** — Encrypted device storage with backup
-
-## 🧪 Testing
-
-### Manual Testing Checklist
-
-1. **Backend Health**
-   ```bash
-   curl http://localhost:8000/state
-   ```
-
-2. **Chat Interface**
-   - Send message: "What devices do I have?"
-   - Verify: AI responds with device list
-
-3. **Device Control**
-   - Via chat: "Turn on light_control_1"
-   - Check dashboard: State updates in real-time
-
-4. **MQTT Verification**
-   ```bash
-   mosquitto_sub -h localhost -t home/#
-   ```
-   Then control device via chat and verify message appears
-
-## 📊 Monitoring
-
-### View Logs
-```bash
-# Backend
-tail -f backend.log
-
-# MQTT
-mosquitto_sub -h localhost -t '#' -v
-```
-
-### Check Device State
-```bash
-# API call
-curl http://localhost:8000/state | jq
-
-# WebSocket
-nc -l localhost 8000  # Connect and watch messages
-```
-
-## 🚀 Deployment
-
-### Docker Deployment
-
-**docker-compose.yml**
-```yaml
-version: '3'
-services:
-  mqtt:
-    image: eclipse-mosquitto
-    ports:
-      - "1883:1883"
-  
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MQTT_BROKER_HOST=mqtt
-    depends_on:
-      - mqtt
-  
-  frontend:
-    build: ./frontend
-    ports:
-      - "5173:5173"
-```
-
-Run with:
-```bash
-docker-compose up
-```
-
-## 🛣️ Roadmap
-
-- [ ] Mobile app (React Native)
-- [ ] Cloud sync with local fallback
-- [ ] Advanced workflow conditions (if/else logic)
-- [ ] Device grouping (rooms, zones)
-- [ ] Voice control via speech-to-text
-- [x] Integration with Home Assistant ✅ (See [HOME_ASSISTANT_SETUP.md](HOME_ASSISTANT_SETUP.md))
-- [ ] Energy monitoring & analytics
-- [ ] Webhook triggers for external services
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License — see the LICENSE file for details.
-
-## 💡 Tips & Tricks
-
-### Reducing MQTT Latency
-Set `EXECUTION_ENGINE_INTERVAL=1` in `.env` for faster automation execution (default is 5 seconds)
-
-### Adding Custom Device Types
-Edit `backend/storage.py` and add new type to the `DEVICE_TYPES` constant
-
-### Debugging Chat Commands
-Enable verbose logging by running backend with:
-```bash
-DEBUG=true python main.py
-```
-
-### Persistent State Across Restarts
-Device state is automatically saved to `storage.json` and restored on startup
-
-## 🆘 Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| ESP32 not connecting to MQTT | Check PC firewall; ensure Mosquitto is listening on `0.0.0.0:1883` |
-| Devices show OFF but LED is ON | MQTT state is stale; send `Turn off device_name` to sync |
-| Chat returns 401 error | Check OpenAI API key in `.env` |
-| WebSocket connection fails | Ensure frontend and backend are on same origin |
-| Workflow not executing | Verify execution engine interval in `.env` (default 5s) |
-
-## 📞 Support
-
-- 📧 Email: amarnathdevraj2005@gmail.com
-- 🐛 Issues: Open an issue on GitHub
-- 💬 Discussions: Use GitHub Discussions for feature requests
+Open your browser and navigate to `http://localhost:5173`.
 
 ---
 
-**Made with ❤️ by the IoT Claw Team**
+## 🛠️ Hardware Setup (ESP32)
+
+### Pinout Configuration (Dual Relay/LED)
+For the pre-configured dual LED/Relay sample code, connect your ESP32 as follows:
+* **LED 1 (GPIO 26):** Connects to GPIO 26 through a `220Ω` resistor to the anode, and cathode to `GND`.
+* **LED 2 (GPIO 27):** Connects to GPIO 27 through a `220Ω` resistor to the anode, and cathode to `GND`.
+
+### Flashing via Web Serial (Recommended)
+1. Navigate to the **Flash** tab in the IoT-Claw Web Console.
+2. Select your serial port.
+3. Enter your **WiFi SSID**, **WiFi Password**, and **MQTT Broker IP**.
+4. Click **Flash Firmware** to automatically compile and upload the firmware.
+
+### Flashing via Arduino IDE
+1. Open the sketch located at `hardware/esp32_dual_led_mqtt/esp32_dual_led_mqtt.ino`.
+2. Replace the credentials placeholders with your WiFi credentials and your computer's local network IP address (as the MQTT host).
+3. Install the `PubSubClient` library in Arduino IDE.
+4. Select your ESP32 board and upload!
+
+---
+
+## 💬 Command Examples
+
+Try typing these commands in the **AI Command Console**:
+
+| Category | Example Command | Expected Response / Tool Triggered |
+| :--- | :--- | :--- |
+| **Control** | *"Turn on the living room light"* | Publishes `ON` to `home/living_room/light/set` |
+| **Dimmers** | *"Dim the bedroom light to 60%"* | Publishes `153` to `home/bedroom/light/dim/set` |
+| **Workflows**| *"At 10:30 PM turn off the kitchen light"*| Registers a schedule workflow executing at `22:30` |
+| **Sequences**| *"Turn on fan, wait 10s, then turn off"* | Triggers sequential execution engine with delay |
+| **Status** | *"Are any devices currently offline?"* | Scans registry and returns status of all devices |
+
+---
+
+## 🆘 Troubleshooting
+
+> [!TIP]
+> Setting `EXECUTION_ENGINE_INTERVAL=1` in your `.env` file reduces automation check latency down to 1 second.
+
+| Issue | Cause | Solution |
+| :--- | :--- | :--- |
+| **ESP32 won't connect to MQTT** | Firewall blocking or wrong IP. | Ensure your computer's network profile is set to Private. Set Mosquitto config to listen on `0.0.0.0:1883` (`allow_anonymous true`). |
+| **Devices show offline on dashboard** | Stale status or MQTT disconnect. | Toggle the device state in the UI once to trigger a state republish. |
+| **Chat API returns 401 error** | Missing or incorrect API key. | Check that your `OPENAI_API_KEY` is correctly defined in `backend/.env` without quotes. |
+| **Web Serial port not found** | Missing USB driver or restricted browser. | Ensure you are using Google Chrome, Microsoft Edge, or Opera. Check if you need to install the CP210x or CH340 USB-to-UART driver. |
+
+---
+
+<div align="center">
+  <sub>Made with ❤️ by the IoT-Claw Team</sub>
+</div>
