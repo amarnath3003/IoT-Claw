@@ -1,8 +1,8 @@
 <div align="center">
   <img src="./frontend/public/logo.jpg" alt="IoT-Claw Logo" width="130" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);" />
 
-  # IoT-Claw 
-  ### AI Agent Framework & Smart Home Automation Platform
+  # IoT-Claw
+  ### The Intelligent AI Agent Framework & Smart Home Control Console
 
   `💬 Chat as Creation` · `🚀 Millisecond Response` · `🧩 Smart and Extensible` · `🧠 Autonomous Learning`
 
@@ -15,15 +15,82 @@
 
 ---
 
-**IoT-Claw** is a full-stack, local-first smart home platform and **Chat-to-Creation AI Agent framework** for IoT devices. It bridges physical hardware, visual automations, and advanced natural-language reasoning under one cohesive neumorphic interface. 
+**IoT-Claw** is a next-generation smart home platform that turns your living space into an intelligent, conversational ecosystem. By combining advanced AI reasoning with standard smart home protocols (MQTT, Zigbee, Home Assistant), IoT-Claw enables you to program, monitor, and command physical hardware using simple, natural language.
 
-It defines device behaviors through conversation and executes the full loop of **sensing, decision-making, and execution** locally using standard MQTT, Zigbee, Home Assistant, and ESP32 nodes. Inspired by the OpenClaw concept, IoT-Claw is lightweight, intelligent, and continuously evolving.
+Whether you are looking to build a beautiful, high-performance local control dashboard, design visually stunning drag-and-drop automations, or deploy self-optimizing AI agents that manage your environment's energy and comfort, IoT-Claw provides a unified, local-first platform designed to grow with you.
 
 ---
 
-## 📐 System Architecture
+## ✨ Features & Capabilities
 
-IoT-Claw coordinates multiple real-time protocols through a centralized, high-performance FastAPI backplane. Device telemetry is logged locally to SQLite in WAL mode, workflows are evaluated dynamically in the background, and all updates are pushed instantly via bidirectional WebSockets.
+### 💬 Conversational Command Console
+Command your space using standard human sentences. Powered by advanced local and cloud-based LLMs, the AI agent interprets your intent, dynamically triggers multi-device events, and streams its thoughts in real-time.
+* **Fluid Streaming Responses:** Watch the AI formulate its actions token-by-token with near-instantaneous execution.
+* **Sequential Multi-Action Queueing:** Command complex operations in a single phrase: *"Turn on the patio heater, wait 20 seconds, then set the backyard lights to a warm amber."*
+* **Smart Device Registry Querying:** Instantly ask questions about your home: *"Are there any active motion alerts in the garage?"* or *"What sensors are currently reporting offline?"*
+
+---
+
+### 🔌 Visual Drag-and-Drop Automation Editor
+Build complex routines visually without writing a single line of YAML or code. IoT-Claw features an interactive node editor built on `@xyflow/react`.
+* **Dynamic Event Triggers:** Fire automation chains using calendar schedules, custom chat triggers, or real-time sensor thresholds (temperature, humidity, motion).
+* **Live Flow Visualization:** Watch nodes pulse and glow in real-time as execution paths fire, loops delay, and actions trigger on your dashboard.
+* **Edge Compilation:** Instantly compile your visual sensor workflows into compact MicroPython scripts and deploy them straight to your edge microcontrollers over the air.
+
+---
+
+### 🧠 The Autonomous Claw Sandbox
+Operate your home on a self-improving agentic reasoning loop. Turn on Autonomous Mode and let the sandbox agent manage and maintain your IoT network.
+* **Auto-Discovery:** Scans MQTT networks and Home Assistant hubs for new, unconfigured hardware.
+* **Goal-Driven Self-Correction:** Set high-level objectives (*"Keep the study room climate optimized and energy efficient"*), and watch the AI write, simulate, test, and debug scripts inside its virtual sandbox until the goals are achieved.
+
+---
+
+### ⚡ Web Serial Browser-Direct Flashing
+Get new hardware connected to your network in seconds with zero development tools or IDE installs required.
+* **Direct USB Connection:** Plug your ESP32 controller into your PC, open the **Flash** panel in Chrome or Edge, and establish a serial interface.
+* **Credentials Injection:** Write WiFi SSIDs, passwords, and local broker coordinates directly into the controller's binary storage at the moment of flashing.
+
+---
+
+### 🏠 Universal Home Assistant & Zigbee Integrations
+Bring your entire hardware stack under one local controller. 
+* **Home Assistant Adapter:** Automatically maps and imports all your existing HA entities (lights, media players, locks, climate systems) with bidirectional WebSocket state synchronization.
+* **Zigbee2MQTT Manager:** Pair, rename, monitor, and configure any standard Zigbee device natively using the interactive Zigbee manager.
+
+---
+
+### 🔔 OpenCV Security Feeds & Telegram Routing
+Keep your home secure with real-time analytics. IoT-Claw includes camera integrations that connect your computer webcam or RTSP security camera feeds.
+* **Computer Vision Alerts:** Processes active video feeds to detect motion, faces, or objects.
+* **Mobile Alerts Routing:** Instantly captures video frame snapshots during alert events and routes the image data directly to your Telegram chat.
+
+---
+
+### 🎨 Sleek Neumorphic Control Interface
+A dashboard that looks like high-end physical hardware. Designed around a dark neumorphic visual language, it features:
+* **Deep Beveled Panels:** Frosted inset control plates and soft tactile indicators.
+* **LED Status Rings:** Glowing halo rings that pulse in green (online), amber (evaluating), and red (offline).
+* **Terminal Diagnostics:** Integrated debug outputs formatted in JetBrains Mono for clean reading.
+
+---
+
+## 💬 Chat Command Showcase
+
+Command | Platform Response & Actions
+:--- | :---
+*"Turn on the laptop security camera and run a quick sweep"* | 🟢 *Camera online. Simulating OpenCV frames.* Sends command payload to camera nodes.
+*"Turn off the living room fan, wait 10 seconds, then toggle the lobby lights"* | ⚡ *Executing sequence.* Schedules actions, holds for a 10s cooldown, then broadcasts state change.
+*"If the main light is on, make sure the backup dimmer is set to 20%"* | 🧩 *Workflow rule registered.* Creates a threshold event link inside the execution database.
+
+---
+
+## 📐 Technical Architecture & Blueprints
+
+> [!NOTE]
+> All primary database logic, background execution adapters, and micro-agent interpreters are designed to run fully locally, preserving local network speed and user privacy.
+
+### System Connections
 
 ```mermaid
 graph TD
@@ -42,22 +109,20 @@ graph TD
 
 ---
 
-## 📂 Project Structure
-
-Here is the exact, complete file structure of the IoT-Claw platform:
+### File Registry
 
 ```
 IoT-Claw/
 ├── backend/
 │   ├── app/
 │   │   ├── core/
-│   │   │   ├── db.py               # SQLite database initializer and WAL mode config
-│   │   │   └── storage.py          # Data models, telemetry history, and SQL persistence
+│   │   │   ├── db.py               # SQLite database setup and WAL mode config
+│   │   │   └── storage.py          # Data models, persistence layer, SQL wrappers
 │   │   ├── services/
 │   │   │   ├── ai_agent.py         # OpenAI GPT streaming agent & tool-binding core
 │   │   │   ├── autonomous_agent.py # Agentic loop, virtual testing, self-improving sandbox
-│   │   │   ├── edge_compiler.py    # Compiles visual workflows into MicroPython edge code
-│   │   │   ├── execution_engine.py # Rule-engine, cron schedules, and action dispatcher
+│   │   │   ├── edge_compiler.py    # Compiles visual workflows into MicroPython code
+│   │   │   ├── execution_engine.py # Rule-engine, cron schedules, trigger-action dispatcher
 │   │   │   ├── ha_adapter.py       # Home Assistant WebSocket adapter & entity syncing
 │   │   │   ├── mcp_client.py       # Model Context Protocol client for edge tool invocation
 │   │   │   ├── mqtt_client.py      # MQTT pub/sub client with local response registries
@@ -107,20 +172,19 @@ IoT-Claw/
 
 ---
 
-## 🗄️ SQLite Database Schema (`iot_claw.db`)
+### SQLite WAL Database Layout
 
-The persistence core is built entirely on SQLite with Write-Ahead Logging (WAL) for safe, parallel concurrency.
-
-* **`devices`:** Holds active configuration records for simulated, MQTT, Zigbee, and Home Assistant entities. Contains hardware metadata (`ieee_address`, `vendor`, `model`), physical location (`location`), current status (`status`), and camera descriptors (`last_detection`, `last_snapshot`).
-* **`telemetry`:** Stores high-frequency sensor readings mapped to devices, complete with a composite descending time index to support instant dashboard sparklines and CSV exports.
-* **`workflows`:** Houses visual automation configurations mapped from React Flow in standard JSON (`config`), state parameters (`enabled`, `run_count`), and edge compiling states (`deployed_to_edge`).
-* **`script_history`:** Holds script records (`script_content`) deployed to edge devices, enabling easy rollback and historical tracking.
-* **`logs`:** General platform telemetry tracking system processes, API commands, and adapter messages.
-* **`captures`:** Binary BLOB container storing physical camera images together with security details (`detected_types`).
+The local persistence module tracks parameters across six structured SQL tables:
+* **`devices`:** High-level details for active simulated, MQTT, HA, or Zigbee nodes, including physical coordinates, status strings, firmware capability lists, and camera capture markers.
+* **`telemetry`:** Raw indexed time-series logs of numeric sensor readings, fully indexed to deliver lightning-fast historical telemetry querying and sparkline loads.
+* **`workflows`:** Node layout coordinates, trigger limits, conditional rules, and edge compiler state metrics.
+* **`script_history`:** Dynamic python source scripts pushed over-the-air to MicroPython nodes.
+* **`logs`:** Multi-level logs detailing socket activity, background checks, system errors, and MQTT messages.
+* **`captures`:** Binary SQLite BLOB cells storing actual body and motion captures with timing tags and category strings.
 
 ---
 
-## ⚙️ Configured Environment Variables (`.env`)
+### Environment Setup (`.env`)
 
 Configure your environment settings inside `backend/.env`. Below are all available core fields:
 
@@ -165,83 +229,59 @@ AUTONOMOUS_AGENT_MAX_ACTIONS=3
 
 ---
 
-## 🚀 Quick Start Guide
+## 🚀 Installation & Running
 
-### 1. Start the Backend API
-Navigate to the `backend` folder, set up your python environment, and start uvicorn:
+### 1. Fire up the Backplane API
 ```bash
 cd backend
 python -m venv venv
 venv\Scripts\activate  # On macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
 ```
-Start the server:
+Start the uvicorn web server:
 ```bash
 python -m uvicorn app.main:app --port 8000 --reload
 ```
-Alternatively, you can run the provided batch script on Windows:
-```bash
-run_server.bat
-```
 
-### 2. Start the Frontend Console
-In a new terminal, launch the Vite web server:
+### 2. Launch the Control Console
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Open your browser and navigate to `http://localhost:5173`.
+Explore the dashboard locally on `http://localhost:5173`.
 
 ---
 
-## 🔌 Core Services Deep-Dive
+## 🛠️ Hardware Setup (ESP32)
 
-### 💬 Chat Coding AI Agent (`ai_agent.py`)
-Provides the natural-language backend. The AI dynamically interacts with your smart home using system-bound tools:
-* **`run_chat_stream`:** Yields tokens instantly as they generate.
-* **Tool Bindings:** Allows the AI to read device states, issue ON/OFF commands, register devices, and configure automation workflows.
+### Pinout Configuration (Dual LED / Relay)
+For the pre-configured dual LED/Relay Arduino sketch, connect your ESP32 as follows:
+* **LED 1 (GPIO 26):** Connects to GPIO 26 through a `220Ω` resistor to the anode, and cathode to `GND`.
+* **LED 2 (GPIO 27):** Connects to GPIO 27 through a `220Ω` resistor to the anode, and cathode to `GND`.
 
-### 🧠 Autonomous Sandbox (`autonomous_agent.py`)
-An agentic reasoning loop that runs at configurable intervals:
-* **Self-Discovery:** Scans for newly paired Zigbee/MQTT hardware.
-* **Goal-Seeking Actions:** Executes virtual test loops, generates custom Python scripts, evaluates performance, and automatically deploys optimal automation logic to your local system.
+### Direct Web Flashing (Recommended)
+1. Plug your ESP32 into a USB port.
+2. Open the **Flash** tab on your IoT-Claw console.
+3. Configure WiFi parameters and MQTT broker credentials in the form.
+4. Click **Flash Firmware** to write the binary directly over the serial connection.
 
-### 🔄 visual Workflow Compiler (`edge_compiler.py`)
-Allows you to compile visual visual flow graphs directly into MicroPython code!
-* **Edge Logic Generation:** Compiles **Sensor Triggers** (threshold checks) and **Action Blocks** into a compact loop function.
-* **Dynamic Code Injection:** Transmits the generated MicroPython script over MQTT (`/script` topic) directly to the destination ESP32.
-
-### ⚡ ESP32 MicroPython Edge Client (`micropython_edge_agent.py`)
-A highly optimized client built for MicroPython ESP32 controllers:
-* **Dynamic Interpreter:** Listens on `/script` topic to execute Python scripts pushed from the AI agent and binds custom `loop()` logic at 100ms intervals.
-* **Boot Persistence:** Automatically saves the last compiled script to the ESP32 internal flash, ensuring loop survivability across power resets.
-* **JSON-RPC MCP Support:** Auto-announces capabilities on boot (e.g. onboard LED, specific ADC and GPIO pin utilities), letting the AI Agent discover and trigger hardware-level tools dynamically.
-
----
-
-## 💬 Command Console Examples
-
-Type commands directly into the **AI Command Console**:
-
-* **Direct Control:** *"Turn on the laptop_security_camera"* $\rightarrow$ routes an `ON` command.
-* **Sensor Logs:** *"Export the temperature sensor telemetry"* $\rightarrow$ compiles historical logs and triggers a `.csv` download.
-* **Zigbee Pairing:** *"Permit joining on the Zigbee network for 120 seconds"* $\rightarrow$ calls the `/permit_join` endpoint to open pairing mode.
-* **Home Assistant Commands:** *"Dim the living room light to 70% in Home Assistant"* $\rightarrow$ routes a WebSocket service call to the Home Assistant adapter.
+### Manual Arduino Upload
+1. Open the sketch `hardware/esp32_dual_led_mqtt/esp32_dual_led_mqtt.ino` in Arduino IDE.
+2. Enter your WiFi coordinates and MQTT network IP address.
+3. Install the `PubSubClient` library.
+4. Compile and upload to your ESP32 board!
 
 ---
 
 ## 🆘 Troubleshooting
 
-> [!TIP]
-> Use the `/ha/diagnose` API endpoint to automatically check DNS, TCP, WebSocket connectivity, and token validation status for your Home Assistant hub.
-
-| Issue | Root Cause | Solution |
-| :--- | :--- | :--- |
-| **Uvicorn cannot locate application** | Starting from wrong directory. | Ensure you are in the `backend/` directory when running `python -m uvicorn app.main:app`. |
-| **Zigbee device fails to join** | Pairing window closed. | Go to the **Zigbee Manager** tab, click **Permit Join**, and power-cycle your Zigbee device. |
-| **OpenCV Camera fails to capture** | Wrong index or permission. | Verify `SECURITY_CAMERA_INDEX` in `.env` matches your active camera device (e.g., `0` for integrated webcams). |
-| **ESP32 loses edge script on boot** | Storage filesystem issue. | MicroPython edge agent relies on `edge_logic.py` in internal flash. Re-run `Flash Device` or check serial console logs. |
+| Diagnostic Symptom | Root Cause | Solution
+| :--- | :--- | :---
+| **Uvicorn fails to start app** | Wrong active terminal folder. | Ensure you are located inside the `backend` folder when executing the uvicorn startup command.
+| **Zigbee device fails to join network** | Joining window closed. | Open the **Zigbee Manager** panel, click **Permit Join**, and restart your physical Zigbee device.
+| **OpenCV Camera fails to capture** | Wrong active index. | Verify the `SECURITY_CAMERA_INDEX` in `.env` corresponds to the correct device ID (e.g. `0` for the laptop webcam).
+| **Telemetry sparklines are empty** | Missing telemetry database updates. | Ensure MQTT topics or Home Assistant statuses are firing values. Toggle a device in the UI to trigger a fresh broadcast update.
 
 ---
 
