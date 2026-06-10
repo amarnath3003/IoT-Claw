@@ -10,9 +10,10 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Download, Upload, Play, RefreshCw, Save, ChevronLeft, ChevronRight, Settings2 } from 'lucide-react'
+import { Download, Upload, Play, RefreshCw, Save, ChevronLeft, ChevronRight, Settings2, Plus, X, MoreVertical } from 'lucide-react'
 import { createWorkflow, getState, getWorkflows } from '../api'
 import WorkflowList from './WorkflowList'
+import useMediaQuery from '../hooks/useMediaQuery'
 
 const S = {
   sans: '"Outfit", sans-serif',
@@ -240,7 +241,11 @@ function WorkflowCanvas({ deviceStates }) {
   const [running, setRunning]               = useState(false)
   const [blocksOpen, setBlocksOpen]         = useState(true)
   const [detailsOpen, setDetailsOpen]       = useState(true)
-  const { screenToFlowPosition }            = useReactFlow()
+  const [mobileBlocksOpen, setMobileBlocksOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileSaveOpen, setMobileSaveOpen] = useState(false)
+  const { screenToFlowPosition, screenToFlowPositionViewport } = useReactFlow()
+  const isMobile = useMediaQuery('(max-width: 768px)')
 
   useEffect(() => { if (Object.keys(deviceStates || {}).length) setDevices(deviceStates) }, [deviceStates])
   useEffect(() => {
@@ -268,13 +273,22 @@ function WorkflowCanvas({ deviceStates }) {
       const filtered = isTrigger ? cur.filter(n => !(n.data.raw?.blockType || n.data.blockType || '').startsWith('trigger.')) : cur
       const id       = `${blockType.replace('.', '-')}-${Date.now()}`
       const rawData  = makeNodeData(blockType)
+      
+      // On mobile without drag-and-drop, position should be centered roughly.
+      let finalPosition = position
+      if (!finalPosition) {
+        // If no explicit position (e.g. tapped from mobile menu), stagger them down
+        finalPosition = { x: isTrigger ? 80 : 250, y: 140 + cur.length * 80 }
+      }
+
       const node = {
         id, type: 'default',
-        position: position || { x: isTrigger ? 80 : 380, y: 140 + cur.length * 60 },
+        position: finalPosition,
         data: { ...rawData, raw: rawData, label: buildNodeLabel(rawData) },
       }
       return [...filtered, node]
     })
+    if (isMobile) setMobileBlocksOpen(false)
   }
 
   const onDragStart = (e, blockType) => {
@@ -427,7 +441,7 @@ function WorkflowCanvas({ deviceStates }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} onKeyDown={onKeyDown} tabIndex={-1}>
 
       {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
             width: 7, height: 7, borderRadius: '50%',
@@ -448,36 +462,71 @@ function WorkflowCanvas({ deviceStates }) {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <label className="neu-btn" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '6px 11px' }} title="Import JSON">
-            <Upload size={12} /> Import
-            <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
-          </label>
-          <button className="neu-btn" onClick={handleExport} style={{ fontSize: 12, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Download size={12} /> Export
-          </button>
-          <button className="neu-btn" onClick={handleTestRun} disabled={running}
-            style={{ fontSize: 12, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 5, color: '#22c55e', borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.06)' }}>
-            {running ? <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={12} />}
-            {running ? 'Running…' : 'Test Run'}
-          </button>
-          <button className="neu-btn" onClick={resetCanvas} style={{ fontSize: 12, padding: '6px 11px' }}>
-            ↺ Reset
-          </button>
-        </div>
+        {isMobile ? (
+          <div>
+            <button className="neu-btn" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} style={{ padding: '6px' }}>
+              <MoreVertical size={16} />
+            </button>
+            {mobileMenuOpen && (
+              <div style={{
+                position: 'absolute', right: 0, top: 32,
+                background: '#09090f', border: `1px solid ${S.border}`,
+                borderRadius: 8, padding: 8,
+                display: 'flex', flexDirection: 'column', gap: 6, zIndex: 10,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+              }}>
+                <label className="neu-btn" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '6px 11px', width: '100%' }} title="Import JSON">
+                  <Upload size={12} /> Import
+                  <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
+                </label>
+                <button className="neu-btn" onClick={() => { handleExport(); setMobileMenuOpen(false); }} style={{ fontSize: 12, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 5, width: '100%' }}>
+                  <Download size={12} /> Export
+                </button>
+                <button className="neu-btn" onClick={() => { handleTestRun(); setMobileMenuOpen(false); }} disabled={running}
+                  style={{ fontSize: 12, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 5, color: '#22c55e', borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.06)', width: '100%' }}>
+                  {running ? <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={12} />}
+                  {running ? 'Running…' : 'Test Run'}
+                </button>
+                <button className="neu-btn" onClick={() => { resetCanvas(); setMobileMenuOpen(false); }} style={{ fontSize: 12, padding: '6px 11px', width: '100%' }}>
+                  ↺ Reset
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <label className="neu-btn" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '6px 11px' }} title="Import JSON">
+              <Upload size={12} /> Import
+              <input type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
+            </label>
+            <button className="neu-btn" onClick={handleExport} style={{ fontSize: 12, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Download size={12} /> Export
+            </button>
+            <button className="neu-btn" onClick={handleTestRun} disabled={running}
+              style={{ fontSize: 12, padding: '6px 11px', display: 'flex', alignItems: 'center', gap: 5, color: '#22c55e', borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.06)' }}>
+              {running ? <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={12} />}
+              {running ? 'Running…' : 'Test Run'}
+            </button>
+            <button className="neu-btn" onClick={resetCanvas} style={{ fontSize: 12, padding: '6px 11px' }}>
+              ↺ Reset
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Three-column builder ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: `${BW}px 1fr ${DW}px`,
+        gridTemplateColumns: isMobile ? '1fr' : `${BW}px 1fr ${DW}px`,
         gap: 10,
         alignItems: 'start',
         transition: 'grid-template-columns 0.2s ease',
+        position: 'relative'
       }}>
 
         {/* ── LEFT: Blocks palette ── */}
-        <div className="neu-section" style={{ overflow: 'hidden', minWidth: 0 }}>
+        {!isMobile && (
+          <div className="neu-section" style={{ overflow: 'hidden', minWidth: 0 }}>
           {/* Header */}
           <button
             onClick={() => setBlocksOpen(o => !o)}
@@ -586,6 +635,7 @@ function WorkflowCanvas({ deviceStates }) {
             </div>
           )}
         </div>
+        )}
 
         {/* ── CENTER: Canvas ── */}
         <div style={{
@@ -615,7 +665,8 @@ function WorkflowCanvas({ deviceStates }) {
         </div>
 
         {/* ── RIGHT: Details panel ── */}
-        <div className="neu-section" style={{ overflow: 'hidden', minWidth: 0 }}>
+        {!isMobile && (
+          <div className="neu-section" style={{ overflow: 'hidden', minWidth: 0 }}>
           {/* Header */}
           <button
             onClick={() => setDetailsOpen(o => !o)}
@@ -725,7 +776,97 @@ function WorkflowCanvas({ deviceStates }) {
             </div>
           )}
         </div>
+        )}
       </div>
+
+      {/* ── MOBILE MODALS ── */}
+      {isMobile && mobileBlocksOpen && (
+         <div className="wf-overlay" onClick={() => setMobileBlocksOpen(false)}>
+           <div className="wf-sidebar-mobile" onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                <span style={{ fontFamily: S.sans, fontSize: 16, fontWeight: 600, color: S.text1 }}>Add Block</span>
+                <button onClick={() => setMobileBlocksOpen(false)} style={{ all: 'unset', color: S.text3, cursor: 'pointer' }}><X size={20}/></button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {BLOCKS.map(block => (
+                    <button key={block.type}
+                      onClick={() => addBlock(block.type)}
+                      style={{
+                        all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '10px 12px', borderRadius: 8,
+                        background: block.cat === 'trigger' ? 'rgba(26,46,255,0.08)' : 'rgba(34,197,94,0.08)',
+                        border: `1px solid ${block.cat === 'trigger' ? 'rgba(26,46,255,0.2)' : 'rgba(34,197,94,0.2)'}`,
+                      }}
+                    >
+                      <span style={{ fontSize: 18, color: block.cat === 'trigger' ? '#4d6aff' : '#22c55e', flexShrink: 0 }}>{block.icon}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontFamily: S.sans, fontSize: 14, fontWeight: 500, color: S.text1 }}>{block.label}</div>
+                        <div style={{ fontFamily: S.mono, fontSize: 11, color: S.text3 }}>{block.hint}</div>
+                      </div>
+                    </button>
+                ))}
+              </div>
+           </div>
+         </div>
+      )}
+
+      {isMobile && selectedNodeId && selectedNode && (
+         <div className="wf-overlay" onClick={() => setSelectedNodeId(null)}>
+           <div className="wf-sidebar-mobile" onClick={e => e.stopPropagation()}>
+             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                <span style={{ fontFamily: S.sans, fontSize: 16, fontWeight: 600, color: S.text1 }}>Configure Node</span>
+                <button onClick={() => setSelectedNodeId(null)} style={{ all: 'unset', color: S.text3, cursor: 'pointer' }}><X size={20}/></button>
+              </div>
+              <BlockInspector node={selectedNode} deviceNames={deviceNames} onChange={updateSelectedConfig} />
+           </div>
+         </div>
+      )}
+
+      {isMobile && mobileSaveOpen && (
+         <div className="wf-overlay" onClick={() => setMobileSaveOpen(false)}>
+           <div className="wf-sidebar-mobile" onClick={e => e.stopPropagation()}>
+             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                <span style={{ fontFamily: S.sans, fontSize: 16, fontWeight: 600, color: S.text1 }}>Save Workflow</span>
+                <button onClick={() => setMobileSaveOpen(false)} style={{ all: 'unset', color: S.text3, cursor: 'pointer' }}><X size={20}/></button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  <label className="neu-label">Workflow name</label>
+                  <input className="neu-input" value={meta.name} onChange={e => setMeta(m => ({ ...m, name: e.target.value }))} placeholder="e.g. Night lights off" style={{ fontSize: 13 }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="neu-label">Cooldown (s)</label>
+                    <input type="number" min="0" className="neu-input" value={meta.cooldown_seconds} onChange={e => setMeta(m => ({ ...m, cooldown_seconds: e.target.value }))} style={{ fontSize: 13 }} />
+                  </div>
+                  <div style={{ paddingTop: 18 }}>
+                    <label className="hw-toggle" title="Enabled">
+                      <input type="checkbox" checked={meta.enabled} onChange={e => setMeta(m => ({ ...m, enabled: e.target.checked }))} />
+                      <div className="hw-toggle-track" />
+                    </label>
+                  </div>
+                </div>
+                {message && <div className={msgType === 'success' ? 'neu-alert-success' : 'neu-alert-error'} style={{ fontSize: 11 }}>{message}</div>}
+                <button className="neu-btn-primary" onClick={handleSave} disabled={saving} style={{ width: '100%', justifyContent: 'center', gap: 6, marginTop: 8 }}>
+                  <Save size={13} />
+                  {saving ? 'Saving…' : 'Save Workflow'}
+                </button>
+              </div>
+           </div>
+         </div>
+      )}
+
+      {/* Floating Add and Save Buttons on Mobile */}
+      {isMobile && !selectedNodeId && !mobileBlocksOpen && !mobileSaveOpen && (
+        <>
+          <button className="wf-add-btn" onClick={() => setMobileBlocksOpen(true)} style={{ bottom: 90 }}>
+            <Plus size={24} />
+          </button>
+          <button className="wf-add-btn" onClick={() => setMobileSaveOpen(true)} style={{ background: '#22c55e', boxShadow: '0 4px 20px rgba(34,197,94,0.4)' }}>
+            <Save size={20} />
+          </button>
+        </>
+      )}
 
       {/* ── Workflow List ── */}
       <WorkflowList workflows={workflows} onChanged={refreshWorkflows} />
