@@ -305,6 +305,7 @@ export default function App() {
                   id={`tab-${tab.id.toLowerCase()}`}
                   onClick={() => setActiveTab(tab.id)}
                   className={`tac-tab${isActive ? ' active' : ''}`}
+                  style={{ position: 'relative' }}
                 >
                   <Icon
                     size={15}

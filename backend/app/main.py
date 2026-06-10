@@ -3,6 +3,7 @@ import io
 from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import asyncio
 import json
@@ -17,6 +18,7 @@ from app.services.mqtt_client import MQTTClient
 from app.core.storage import Storage
 from app.services.execution_engine import ExecutionEngine
 from app.services.security_camera import SecurityCameraSimulator
+from app.services.rtsp_camera import RTSPCameraManager
 from app.services.edge_compiler import EdgeCompiler
 from app.services.mcp_client import MCPClient
 from app.services.telegram_bot import run_bot as run_telegram_bot
@@ -58,7 +60,14 @@ check_interval = float(os.getenv("EXECUTION_ENGINE_INTERVAL", "5"))
 manager = ConnectionManager()
 storage = Storage()
 mqtt = MQTTClient(storage=storage, ws_broadcast_fn=manager.broadcast)
-camera_service = SecurityCameraSimulator(storage=storage, ws_broadcast_fn=manager.broadcast)
+
+# Laptop webcam simulator (gated by SECURITY_CAMERA_ENABLED env flag)
+_webcam_enabled = os.getenv("SECURITY_CAMERA_ENABLED", "true").lower() == "true"
+camera_service = SecurityCameraSimulator(storage=storage, ws_broadcast_fn=manager.broadcast) if _webcam_enabled else None
+
+# RTSP IP camera manager (no-op if RTSP_CAMERA_URL not set)
+rtsp_manager = RTSPCameraManager(storage=storage, ws_broadcast_fn=manager.broadcast)
+
 engine = ExecutionEngine(storage=storage, mqtt=mqtt, check_interval=check_interval, camera_service=camera_service, ws_broadcast_fn=manager.broadcast)
 autonomous = AutonomousAgent(
     storage=storage,
@@ -96,9 +105,13 @@ async def telemetry_cleanup():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── Startup ───────────────────────────────────────────────────────────────
-    camera_service.bind_loop(asyncio.get_running_loop())
+    # Bind event loops for thread-safe async dispatching
+    if camera_service:
+        camera_service.bind_loop(asyncio.get_running_loop())
+        camera_service.ensure_registered()
+    rtsp_manager.bind_loop(asyncio.get_running_loop())
+    rtsp_manager.start_all()
     engine.bind_loop(asyncio.get_running_loop())
-    camera_service.ensure_registered()
 
     # Start MQTT transport (legacy synchronous connect path)
     mqtt_host = os.getenv("MQTT_BROKER_HOST", "localhost")
@@ -132,9 +145,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
-    # stop_all() runs in reverse registration order: HA → Zigbee (before MQTT)
     await registry.stop_all()
-    camera_service.stop()
+    rtsp_manager.stop_all()
+    if camera_service:
+        camera_service.stop()
     mqtt.disconnect()
 
 
@@ -157,6 +171,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve HLS segments for browser-native video playback
+import pathlib as _pathlib
+_hls_dir = _pathlib.Path("hls")
+_hls_dir.mkdir(exist_ok=True)
+app.mount("/hls", StaticFiles(directory=str(_hls_dir)), name="hls")
 
 
 @app.post("/chat")
@@ -529,20 +549,34 @@ async def ha_refresh():
 
 @app.get("/devices/{name}/preview")
 async def device_preview(name: str):
-    """Return latest camera preview frame as JPEG."""
+    """Return latest camera preview frame as JPEG (supports webcam + RTSP ip_camera)."""
     device = storage.get_all_devices().get(name)
     if not device:
         raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
-    if device.get("type") != "security_camera" or name != camera_service.device_name:
-        raise HTTPException(status_code=400, detail="Preview is only available for security camera devices")
-    if str(device.get("status", "")).upper() != "ON":
-        raise HTTPException(status_code=409, detail="Camera is OFF")
 
-    frame = camera_service.get_latest_preview()
-    if not frame:
-        raise HTTPException(status_code=404, detail="Camera preview not ready")
+    dtype = device.get("type", "")
 
-    return Response(content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store, no-cache"})
+    # RTSP IP camera path
+    if dtype == "ip_camera":
+        if str(device.get("status", "")).upper() != "ON":
+            raise HTTPException(status_code=409, detail="Camera is OFF")
+        frame = rtsp_manager.get_preview(name)
+        if not frame:
+            raise HTTPException(status_code=404, detail="Camera preview not ready")
+        return Response(content=frame, media_type="image/jpeg",
+                        headers={"Cache-Control": "no-store, no-cache"})
+
+    # Laptop webcam path
+    if dtype == "security_camera" and camera_service and name == camera_service.device_name:
+        if str(device.get("status", "")).upper() != "ON":
+            raise HTTPException(status_code=409, detail="Camera is OFF")
+        frame = camera_service.get_latest_preview()
+        if not frame:
+            raise HTTPException(status_code=404, detail="Camera preview not ready")
+        return Response(content=frame, media_type="image/jpeg",
+                        headers={"Cache-Control": "no-store, no-cache"})
+
+    raise HTTPException(status_code=400, detail="Preview not available for this device type")
 
 
 @app.get("/devices/{name}/telemetry")
@@ -725,6 +759,43 @@ async def delete_workflow(workflow_id: str):
         {"workflow_id": workflow_id},
     )
     return {"status": "deleted"}
+
+
+# ── RTSP Camera Endpoints ──────────────────────────────────────────────────────
+
+@app.get("/cameras")
+async def list_cameras():
+    """List all configured RTSP IP cameras with stream status and last detection."""
+    return rtsp_manager.list_cameras()
+
+
+@app.get("/cameras/{name}")
+async def get_camera(name: str):
+    """Get status and last detection result for a specific camera."""
+    cam = rtsp_manager.get_camera(name)
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera '{name}' not found")
+    return cam
+
+
+@app.post("/cameras/{name}/start")
+async def start_camera(name: str):
+    """Start an RTSP camera stream."""
+    result = rtsp_manager.start_camera(name)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return result
+
+
+@app.post("/cameras/{name}/stop")
+async def stop_camera(name: str):
+    """Stop an RTSP camera stream."""
+    result = rtsp_manager.stop_camera(name)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return result
 
 
 @app.websocket("/ws")

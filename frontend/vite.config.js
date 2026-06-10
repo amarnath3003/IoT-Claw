@@ -6,5 +6,10 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    proxy: {
+      '/hls':     { target: 'http://localhost:8000', changeOrigin: true },
+      '/cameras': { target: 'http://localhost:8000', changeOrigin: true },
+      '/devices': { target: 'http://localhost:8000', changeOrigin: true },
+    }
   }
 })

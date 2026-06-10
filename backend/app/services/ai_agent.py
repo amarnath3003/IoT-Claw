@@ -581,6 +581,66 @@ Always call get_device_capabilities first to discover the device's tools.""",
     }
 ]
 
+# ── Camera tools ───────────────────────────────────────────────────────────────
+_CAMERA_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_cameras",
+            "description": "List all configured RTSP IP cameras with stream status and last detection result.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_camera_detections",
+            "description": (
+                "Return the latest OpenCV detection results for a specific camera "
+                "(motion, person, face). Use when the user asks 'is anyone at the door?', "
+                "'what was detected?', or 'check the front door camera'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "camera_name": {"type": "string", "description": "Camera device name, e.g. front_door"}
+                },
+                "required": ["camera_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_camera",
+            "description": "Start an RTSP IP camera stream by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "camera_name": {"type": "string"}
+                },
+                "required": ["camera_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_camera",
+            "description": "Stop an RTSP IP camera stream by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "camera_name": {"type": "string"}
+                },
+                "required": ["camera_name"]
+            }
+        }
+    },
+]
+
+TOOLS = TOOLS + _CAMERA_TOOLS
+
 
 # ── Tool subsets for selective injection ──────────────────────────────────────
 _TOOL_NAMES_BASIC    = {"control_device", "blink_device", "sequence_actions", "set_device_brightness", "read_sensor", "list_devices", "get_logs"}
@@ -589,6 +649,7 @@ _TOOL_NAMES_WORKFLOW = {"create_workflow", "list_workflows", "toggle_workflow", 
 _TOOL_NAMES_EDGE     = {"push_script", "push_script_group", "rollback_script", "get_device_capabilities", "call_hardware_tool"}
 _TOOL_NAMES_ZIGBEE   = {"zigbee_permit_join", "zigbee_remove_device", "zigbee_group_set"}
 _TOOL_NAMES_HA       = {"ha_list_entities", "ha_call_service"}
+_TOOL_NAMES_CAMERA   = {"list_cameras", "get_camera_detections", "start_camera", "stop_camera"}
 
 _TOOLS_BY_NAME = {t["function"]["name"]: t for t in TOOLS}
 
@@ -607,6 +668,8 @@ def _select_tools(message: str) -> list:
         names |= _TOOL_NAMES_ZIGBEE
     if any(k in msg for k in {"home assistant", "ha_", "entity", "climate", "thermostat", "scene", "hvac", "blind", "cover"}):
         names |= _TOOL_NAMES_HA
+    if any(k in msg for k in {"camera", "rtsp", "detect", "detection", "motion", "door cam", "who is", "is anyone", "is there"}):
+        names |= _TOOL_NAMES_CAMERA
     if _is_big_task(message):
         return TOOLS
     return [_TOOLS_BY_NAME[n] for n in names if n in _TOOLS_BY_NAME]
@@ -1101,7 +1164,60 @@ def build_tool_dispatch(mqtt, storage, engine=None, registry=None):
         # Home Assistant
         "ha_list_entities":       ha_list_entities_fn,
         "ha_call_service":        ha_call_service_fn,
+        # RTSP cameras
+        "list_cameras":           _list_cameras_fn,
+        "get_camera_detections":  _get_camera_detections_fn,
+        "start_camera":           _start_camera_fn,
+        "stop_camera":            _stop_camera_fn,
     }
+
+
+# ── Camera dispatch helpers (module-level, access rtsp_manager lazily) ────────────
+
+def _get_rtsp_manager():
+    """Lazily import rtsp_manager from main to avoid circular imports."""
+    try:
+        from app.main import rtsp_manager as _rm
+        return _rm
+    except Exception:
+        return None
+
+
+def _list_cameras_fn() -> dict:
+    rm = _get_rtsp_manager()
+    if not rm:
+        return {"error": "RTSP camera manager not available."}
+    cams = rm.list_cameras()
+    return {"cameras": cams, "count": len(cams)}
+
+
+def _get_camera_detections_fn(camera_name: str) -> dict:
+    rm = _get_rtsp_manager()
+    if not rm:
+        return {"error": "RTSP camera manager not available."}
+    cam = rm.get_camera(camera_name)
+    if not cam:
+        known = rm.worker_names
+        return {"error": f"Camera '{camera_name}' not found.", "known_cameras": known}
+    det = cam.get("last_detection", {})
+    if not det:
+        return {"camera": camera_name, "status": cam.get("running"), "last_detection": None,
+                "message": "No detections recorded yet."}
+    return {"camera": camera_name, "location": cam.get("location"), **det}
+
+
+def _start_camera_fn(camera_name: str) -> dict:
+    rm = _get_rtsp_manager()
+    if not rm:
+        return {"error": "RTSP camera manager not available."}
+    return rm.start_camera(camera_name)
+
+
+def _stop_camera_fn(camera_name: str) -> dict:
+    rm = _get_rtsp_manager()
+    if not rm:
+        return {"error": "RTSP camera manager not available."}
+    return rm.stop_camera(camera_name)
 
 
 async def run_chat(user_message: str, history: list, mqtt, storage, engine=None, registry=None) -> dict:

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Wifi, Radio, Home, Trash2, Search, Network, Layers, List } from 'lucide-react'
 import { deleteDevice, registerDevice, getGroups } from '../api'
 import ZigbeeManager from './ZigbeeManager'
@@ -45,11 +45,12 @@ const BADGE = {
   mqtt:   { label: 'MQTT',   color: '#6b8cff', bg: 'rgba(26,46,255,0.1)',   border: 'rgba(26,46,255,0.25)'   },
   zigbee: { label: 'Zigbee', color: '#a78bfa', bg: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.25)'  },
   ha:     { label: 'HA',     color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.25)'  },
+  rtsp:   { label: 'RTSP',   color: '#67e8f9', bg: 'rgba(103,232,249,0.1)', border: 'rgba(103,232,249,0.25)' },
 }
 
 const TYPE_LABELS = {
   switch: 'Switch', sensor: 'Sensor', dimmable_switch: 'Dimmable',
-  security_camera: 'Camera', generic: 'Generic',
+  security_camera: 'Camera', ip_camera: 'IP Camera', generic: 'Generic',
   micropython_edge_agent: 'Edge Agent',
   zigbee_light: 'Zigbee Light', zigbee_color_light: 'Zigbee RGB',
   zigbee_plug: 'Zigbee Plug', zigbee_climate_sensor: 'Zigbee Climate',
@@ -136,6 +137,125 @@ const labelStyle = {
   fontSize: '0.65rem', fontWeight: 600,
   letterSpacing: '0.1em', textTransform: 'uppercase',
   color: 'rgba(255,255,255,0.50)', marginBottom: 5,
+}
+
+/* ── IP Camera inline tile ─────────────────────────────────────────────────── */
+function CameraDeviceRow({ name, device, hasAlert }) {
+  const [preview, setPreview] = useState('')
+  const [toggling, setToggling] = useState(false)
+  const imgRef = useRef(null)
+  const timerRef = useRef(null)
+  const isOn = String(device.status).toUpperCase() === 'ON'
+  const det = device.last_detection
+  const API = 'http://localhost:8000'
+
+  // MJPEG polling — only when camera is ON
+  useEffect(() => {
+    if (!isOn) { setPreview(''); return }
+    const tick = () => setPreview(`${API}/devices/${name}/preview?t=${Date.now()}`)
+    tick()
+    timerRef.current = setInterval(tick, 250)
+    return () => clearInterval(timerRef.current)
+  }, [isOn, name])
+
+  const toggle = async () => {
+    setToggling(true)
+    try {
+      const action = isOn ? 'stop' : 'start'
+      await fetch(`${API}/cameras/${name}/${action}`, { method: 'POST' })
+    } catch (e) { /* ignore */ }
+    finally { setToggling(false) }
+  }
+
+  const label = name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+  return (
+    <div style={{
+      background: hasAlert ? 'rgba(239,68,68,0.04)' : C.depth,
+      border: `1px solid ${hasAlert ? 'rgba(239,68,68,0.35)' : C.border}`,
+      borderLeft: `3px solid ${isOn ? C.green : 'rgba(103,232,249,0.4)'}`,
+      borderRadius: 10,
+      overflow: 'hidden',
+      transition: 'border-color 0.3s, box-shadow 0.3s',
+      boxShadow: hasAlert ? '0 0 16px rgba(239,68,68,0.2)' : 'none',
+      animation: hasAlert ? 'cameraAlertPulse 2s ease-in-out infinite' : 'none',
+    }}>
+      {/* Top row: name + badges + toggle */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 14px',
+      }}>
+        {/* Icon */}
+        <div style={{
+          fontSize: 16, width: 36, height: 36, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 8,
+          background: isOn ? 'rgba(34,197,94,0.08)' : C.panel,
+          border: `1px solid ${isOn ? 'rgba(34,197,94,0.2)' : C.border}`,
+          color: isOn ? C.green : C.text2,
+        }}>⊙</div>
+
+        {/* Name + meta */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 2 }}>
+            <span style={{ fontFamily: C.sans, fontSize: '0.88rem', fontWeight: 600, color: C.text1 }}>{label}</span>
+            <span style={{ fontFamily: C.mono, fontSize: '0.6rem', color: C.text3, background: C.panel, padding: '1px 6px', borderRadius: 4, border: `1px solid ${C.border}` }}>IP Camera</span>
+            <span style={{ fontFamily: C.mono, fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#67e8f9', background: 'rgba(103,232,249,0.1)', border: '1px solid rgba(103,232,249,0.25)', padding: '1px 6px', borderRadius: 4 }}>RTSP</span>
+            {device.location && <span style={{ fontFamily: C.sans, fontSize: '0.7rem', color: C.text3 }}>◍ {device.location}</span>}
+            {hasAlert && <span style={{ fontFamily: C.sans, fontSize: '0.68rem', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', padding: '1px 8px', borderRadius: 4 }}>🚨 Alert</span>}
+          </div>
+          {det?.label && (
+            <div style={{ fontFamily: C.sans, fontSize: '0.72rem', color: '#f59e0b' }}>
+              {det.label}
+            </div>
+          )}
+        </div>
+
+        {/* Status + toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div style={{ fontFamily: C.mono, fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.08em', color: isOn ? C.green : C.text3, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: isOn ? C.green : 'rgba(255,255,255,0.15)', boxShadow: isOn ? `0 0 5px ${C.green}` : 'none' }} />
+            {isOn ? 'ON' : 'OFF'}
+          </div>
+          <button
+            onClick={toggle}
+            disabled={toggling}
+            style={{
+              all: 'unset', cursor: toggling ? 'not-allowed' : 'pointer',
+              fontFamily: C.sans, fontSize: '0.7rem', fontWeight: 600,
+              padding: '4px 11px', borderRadius: 7,
+              background: isOn ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.12)',
+              border: `1px solid ${isOn ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.25)'}`,
+              color: isOn ? '#ef4444' : '#22c55e',
+              opacity: toggling ? 0.6 : 1,
+              transition: 'all 0.15s',
+            }}
+          >
+            {isOn ? '⏹ Stop' : '▶ Start'}
+          </button>
+        </div>
+      </div>
+
+      {/* Live preview (only when ON) */}
+      {isOn && (
+        <div style={{ position: 'relative', background: '#030308', lineHeight: 0 }}>
+          {preview ? (
+            <img
+              ref={imgRef}
+              src={preview}
+              alt={`${name} live`}
+              style={{ width: '100%', maxHeight: 220, objectFit: 'cover', display: 'block' }}
+              onError={() => setPreview('')}
+            />
+          ) : (
+            <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.text3, fontFamily: C.sans, fontSize: '0.75rem' }}>
+              Connecting…
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function Devices({ deviceStates, wsMessages }) {
@@ -554,7 +674,19 @@ export default function Devices({ deviceStates, wsMessages }) {
                   ? new Date(device.last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                   : null
                 const src   = srcOf(device)
-                const badge = BADGE[src] || BADGE.mqtt
+                const badge = BADGE[src] || BADGE[device.integration_source] || BADGE.mqtt
+
+                // IP Camera — rendered as an inline preview tile
+                if (device.type === 'ip_camera') {
+                  return (
+                    <CameraDeviceRow
+                      key={name}
+                      name={name}
+                      device={device}
+                      hasAlert={false}
+                    />
+                  )
+                }
 
                 // Find groups this device belongs to
                 const deviceGroups = groups.filter(g => g.devices?.includes(name))

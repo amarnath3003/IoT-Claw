@@ -91,6 +91,11 @@ frontend/build/
 
 # ─── Project Specific Runtime Data ───
 backend/storage.json
+backend/storage.json.corrupt
+backend/iot_claw.db
+backend/iot_claw.db-wal
+backend/iot_claw.db-shm
+backend/server_output_test.log
 backend/**/*.db
 backend/**/*.db-wal
 backend/**/*.db-shm
