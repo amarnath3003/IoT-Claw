@@ -1,6 +1,7 @@
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 openai>=1.30.0
+litellm>=1.35.0
 paho-mqtt>=1.6.1
 python-dotenv>=1.0.0
 websockets>=12.0

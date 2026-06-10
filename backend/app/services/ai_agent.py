@@ -4,15 +4,27 @@ import os
 import threading
 import time
 
-from openai import AsyncOpenAI
+import litellm
+from litellm import acompletion
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-_api_key = os.getenv("OPENAI_API_KEY")
-_model = os.getenv("OPENAI_MODEL", "gpt-4.1-nano")
-_api_key_missing = not _api_key or _api_key.startswith("sk-proj-REPLACE")
-client = None if _api_key_missing else AsyncOpenAI(api_key=_api_key)
+litellm.drop_params = True
+
+# Read Multi-LLM config
+_model = os.getenv("LLM_MODEL", os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini"))
+_api_base = os.getenv("LLM_API_BASE")
+
+_openai_key = os.getenv("OPENAI_API_KEY", "")
+_anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+_gemini_key = os.getenv("GEMINI_API_KEY", "")
+_is_local = _model.startswith("ollama/") or bool(_api_base)
+
+# Flag to indicate if AI chat is enabled globally
+client = True 
+if not _is_local and not any(k and not k.startswith("sk-proj-REPLACE") for k in [_openai_key, _anthropic_key, _gemini_key]):
+    client = None # Mark as disabled if no keys and not local
 
 SYSTEM_PROMPT = """You are iotClaw — a highly intelligent IoT automation assistant controlling real physical devices.
 
@@ -1273,7 +1285,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None,
             }
             if not is_big_task:
                 kwargs["max_completion_tokens"] = 3000
-            response = await client.chat.completions.create(**kwargs)
+            response = await acompletion(api_base=_api_base, **kwargs)
 
             choice = response.choices[0]
             finish = choice.finish_reason
@@ -1382,7 +1394,7 @@ async def run_chat_stream(user_message: str, history: list, mqtt, storage, engin
             if not is_big_task:
                 kwargs["max_completion_tokens"] = 3000
 
-            stream = await client.chat.completions.create(**kwargs)
+            stream = await acompletion(api_base=_api_base, **kwargs)
 
             content_parts = []
             tool_calls_acc: dict = {}

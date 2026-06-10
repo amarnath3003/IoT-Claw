@@ -40,7 +40,19 @@ _ENABLED = os.getenv("AUTONOMOUS_AGENT_ENABLED", "true").lower() == "true"
 _INTERVAL = int(os.getenv("AUTONOMOUS_AGENT_INTERVAL", "60"))
 _MAX_ACTIONS = int(os.getenv("AUTONOMOUS_AGENT_MAX_ACTIONS", "3"))
 _AGGRESSION = os.getenv("AUTONOMOUS_AGENT_AGGRESSION", "medium")
-_API_KEY = os.getenv("OPENAI_API_KEY", "")
+_MODEL = os.getenv("LLM_MODEL", os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini"))
+_API_BASE = os.getenv("LLM_API_BASE")
+_IS_LOCAL = _MODEL.startswith("ollama/") or bool(_API_BASE)
+
+_openai_key = os.getenv("OPENAI_API_KEY", "")
+_anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+_gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+# Disable if not local and no valid API keys are found
+if not _IS_LOCAL and not any(k and not k.startswith("sk-proj-REPLACE") for k in [_openai_key, _anthropic_key, _gemini_key]):
+    _IS_CONFIGURED = False
+else:
+    _IS_CONFIGURED = True
 
 
 AGGRESSION_PROFILES = {
@@ -406,8 +418,8 @@ AGENT PROFILE:
 """
 
     async def _call_llm(self, context: str) -> Optional[dict]:
-        """Call OpenAI and parse the structured response."""
-        if not _API_KEY or _API_KEY.startswith("sk-proj-REPLACE"):
+        """Call LLM and parse the structured response."""
+        if not _IS_CONFIGURED:
             return None
 
         aggression = self._get_aggression()
@@ -421,19 +433,24 @@ AGENT PROFILE:
         )
 
         try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=_API_KEY)
-
-            response = await client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
+            from litellm import acompletion
+            import litellm
+            litellm.drop_params = True
+            
+            kwargs = {
+                "model": _MODEL,
+                "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": context},
                 ],
-                max_tokens=800,
-                temperature=0.3,  # Lower = more consistent, less creative
-                response_format={"type": "json_object"},
-            )
+                "max_tokens": 800,
+                "temperature": 0.3,  # Lower = more consistent, less creative
+                "response_format": {"type": "json_object"},
+            }
+            if _API_BASE:
+                kwargs["api_base"] = _API_BASE
+
+            response = await acompletion(**kwargs)
 
             raw = response.choices[0].message.content
             return json.loads(raw)
