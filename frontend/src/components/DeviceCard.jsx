@@ -1,73 +1,95 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript, getTelemetryExportUrl, callMcpTool, zigbeeSet } from '../api'
+import { useEffect, useMemo, useState } from 'react'
+import { commandDevice, getDevicePreviewUrl, getTelemetry, getScriptHistory, rollbackScript, getTelemetryExportUrl, callMcpTool } from '../api'
 import EdgeConsole from './EdgeConsole'
+import { Power, ScrollText, Terminal, Wrench, Download, MapPin } from 'lucide-react'
 
-/* ── Resolve a colorful emoji icon + bg color from name + type ── */
+/* ── Design tokens ── */
+const C = {
+  panel:   'rgba(255,255,255,0.03)',
+  depth:   'rgba(255,255,255,0.02)',
+  bg:      '#09090f',
+  border:  'rgba(255,255,255,0.07)',
+  text1:   'rgba(255,255,255,0.82)',
+  text2:   'rgba(255,255,255,0.50)',
+  text3:   'rgba(255,255,255,0.25)',
+  accent:  '#1a2eff',
+  blue:    '#6b8cff',
+  green:   '#22c55e',
+  red:     '#ef4444',
+  amber:   '#f59e0b',
+  purple:  '#a78bfa',
+  sans:    "'Outfit', sans-serif",
+  mono:    "'JetBrains Mono', ui-monospace, monospace",
+}
+
+/* ── Integration badge ── */
+const INTEGRATION_BADGE = {
+  mqtt:   { label: 'MQTT',   color: '#6b8cff', bg: 'rgba(26,46,255,0.08)', border: 'rgba(26,46,255,0.18)' },
+  zigbee: { label: 'Zigbee', color: '#6b8cff', bg: 'rgba(26,46,255,0.08)', border: 'rgba(26,46,255,0.18)' },
+  ha:     { label: 'HA',     color: '#6b8cff', bg: 'rgba(26,46,255,0.08)', border: 'rgba(26,46,255,0.18)' },
+}
+
+/* ── Device icon resolver ── */
 function resolveIcon(name, type) {
   const n = name.toLowerCase()
-  if (/lamp|bulb|light|led/.test(n))       return { emoji: '💡', bg: 'rgba(251,191,36,0.12)',  glow: 'rgba(251,191,36,0.25)' }
-  if (/fan|ventil|exhaust/.test(n))        return { emoji: '🌀', bg: 'rgba(52,211,153,0.12)',  glow: 'rgba(52,211,153,0.25)' }
-  if (/temp|therm|heat/.test(n))           return { emoji: '🌡️', bg: 'rgba(239,68,68,0.12)',   glow: 'rgba(239,68,68,0.25)' }
-  if (/humid|moisture|water/.test(n))      return { emoji: '💧', bg: 'rgba(96,165,250,0.12)',  glow: 'rgba(96,165,250,0.25)' }
-  if (/cam|camera|security|eye/.test(n))   return { emoji: '📷', bg: 'rgba(167,139,250,0.12)', glow: 'rgba(167,139,250,0.25)' }
-  if (/door|lock|gate|entry/.test(n))      return { emoji: '🚪', bg: 'rgba(251,146,60,0.12)',  glow: 'rgba(251,146,60,0.25)' }
-  if (/motion|pir|presence/.test(n))       return { emoji: '🚶', bg: 'rgba(234,179,8,0.12)',   glow: 'rgba(234,179,8,0.25)' }
-  if (/smoke|gas|co2|air/.test(n))         return { emoji: '💨', bg: 'rgba(107,114,128,0.15)', glow: 'rgba(107,114,128,0.25)' }
-  if (/pump|valve|flow/.test(n))           return { emoji: '⚗️', bg: 'rgba(56,189,248,0.12)',  glow: 'rgba(56,189,248,0.25)' }
-  if (/curtain|blind|shade|roller/.test(n))return { emoji: '🪟', bg: 'rgba(96,165,250,0.10)',  glow: 'rgba(96,165,250,0.2)'  }
-  if (/speaker|audio|sound/.test(n))       return { emoji: '🔊', bg: 'rgba(167,139,250,0.12)', glow: 'rgba(167,139,250,0.25)' }
-  if (/tv|display|screen/.test(n))         return { emoji: '📺', bg: 'rgba(96,165,250,0.12)',  glow: 'rgba(96,165,250,0.25)' }
-  if (/plug|socket|outlet|power/.test(n))  return { emoji: '🔌', bg: 'rgba(34,197,94,0.12)',   glow: 'rgba(34,197,94,0.25)' }
-  if (/esp32|edge|micropython/.test(n))    return { emoji: '🤖', bg: 'rgba(99,102,241,0.12)',  glow: 'rgba(99,102,241,0.25)' }
-  if (type === 'micropython_edge_agent')   return { emoji: '🤖', bg: 'rgba(99,102,241,0.12)',  glow: 'rgba(99,102,241,0.25)' }
-  if (type === 'security_camera') return { emoji: '📷', bg: 'rgba(167,139,250,0.12)', glow: 'rgba(167,139,250,0.25)' }
-  if (type === 'dimmable_switch') return { emoji: '💡', bg: 'rgba(251,191,36,0.12)',  glow: 'rgba(251,191,36,0.25)' }
-  if (type === 'switch')          return { emoji: '🔌', bg: 'rgba(34,197,94,0.12)',   glow: 'rgba(34,197,94,0.25)' }
-  if (type === 'sensor')          return { emoji: '📡', bg: 'rgba(37,99,235,0.12)',   glow: 'rgba(37,99,235,0.25)' }
-  if (type === 'zigbee_color_light')    return { emoji: '🌈', bg: 'rgba(167,139,250,0.12)', glow: 'rgba(167,139,250,0.3)' }
-  if (type === 'zigbee_light')          return { emoji: '💡', bg: 'rgba(251,191,36,0.12)',  glow: 'rgba(251,191,36,0.25)' }
-  if (type === 'zigbee_plug')           return { emoji: '🔌', bg: 'rgba(34,197,94,0.12)',   glow: 'rgba(34,197,94,0.25)' }
-  if (type === 'zigbee_climate_sensor') return { emoji: '🌡️', bg: 'rgba(239,68,68,0.12)',   glow: 'rgba(239,68,68,0.25)' }
-  if (type === 'zigbee_motion_sensor')  return { emoji: '🚶', bg: 'rgba(234,179,8,0.12)',   glow: 'rgba(234,179,8,0.25)' }
-  if (type === 'zigbee_contact_sensor') return { emoji: '🚪', bg: 'rgba(251,146,60,0.12)',  glow: 'rgba(251,146,60,0.25)' }
-  if (type === 'zigbee_remote')         return { emoji: '🎛️', bg: 'rgba(99,102,241,0.12)', glow: 'rgba(99,102,241,0.25)' }
-  if (type === 'zigbee_switch')         return { emoji: '⚡', bg: 'rgba(37,99,235,0.12)',   glow: 'rgba(37,99,235,0.25)' }
-  if (type === 'zigbee_sensor')         return { emoji: '📡', bg: 'rgba(37,99,235,0.12)',   glow: 'rgba(37,99,235,0.25)' }
-  return                                  { emoji: '⚙️', bg: 'rgba(107,114,128,0.12)', glow: 'rgba(107,114,128,0.2)' }
+  if (/lamp|bulb|light|led/.test(n))       return { icon: '◈', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/fan|ventil|exhaust/.test(n))        return { icon: '⊙', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/temp|therm|heat/.test(n))           return { icon: '△', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/humid|moisture|water/.test(n))      return { icon: '◇', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/cam|camera|security|eye/.test(n))   return { icon: '⊗', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/door|lock|gate|entry/.test(n))      return { icon: '▣', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/motion|pir|presence/.test(n))       return { icon: '◉', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/smoke|gas|co2|air/.test(n))         return { icon: '≋', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/pump|valve|flow/.test(n))           return { icon: '⊕', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/plug|socket|outlet|power/.test(n))  return { icon: '⚡', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (/esp32|edge|micropython/.test(n) || type === 'micropython_edge_agent')
+                                           return { icon: '⬡', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'security_camera')       return { icon: '⊗', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'dimmable_switch')       return { icon: '◈', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'switch')                return { icon: '⚡', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'sensor')                return { icon: '⊟', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_color_light')    return { icon: '◈', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_light')          return { icon: '◈', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_plug')           return { icon: '⚡', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_climate_sensor') return { icon: '△', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_motion_sensor')  return { icon: '◉', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_contact_sensor') return { icon: '▣', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_remote')         return { icon: '⊞', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_switch')         return { icon: '⚡', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  if (type === 'zigbee_sensor')         return { icon: '⊟', color: '#6b8cff', glow: 'rgba(107,140,255,0.18)' }
+  return                                   { icon: '◫',  color: 'rgba(255,255,255,0.25)', glow: 'rgba(255,255,255,0.06)' }
 }
 
 /* ── SVG Sparkline ── */
-function Sparkline({ points, color = 'var(--accent)', height = 40 }) {
+function Sparkline({ points, color = '#1a2eff', height = 38 }) {
   if (!points || points.length < 2) return null
-  const W = 200
-  const H = height
-  const PAD = 4
+  const W = 200, H = height, PAD = 3
   const vals = points.map(p => p.v)
-  const min = Math.min(...vals)
-  const max = Math.max(...vals)
+  const min = Math.min(...vals), max = Math.max(...vals)
   const range = max - min || 1
-
   const coords = points.map((p, i) => {
     const x = PAD + (i / (points.length - 1)) * (W - PAD * 2)
     const y = H - PAD - ((p.v - min) / range) * (H - PAD * 2)
     return `${x.toFixed(1)},${y.toFixed(1)}`
   })
-  const polyline = coords.join(' ')
-  const area = `${PAD},${H} ${polyline} ${W - PAD},${H}`
-
+  const area = `${PAD},${H} ${coords.join(' ')} ${W - PAD},${H}`
+  const id = `sg${color.replace(/[^a-z]/gi, '')}`
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }} preserveAspectRatio="none">
       <defs>
-        <linearGradient id={`sg-${color.replace(/[^a-z]/gi, '')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
           <stop offset="100%" stopColor={color} stopOpacity="0.02" />
         </linearGradient>
       </defs>
-      <polygon points={area} fill={`url(#sg-${color.replace(/[^a-z]/gi, '')})`} />
-      <polyline points={polyline} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      {/* Latest value dot */}
-      <circle cx={coords[coords.length - 1].split(',')[0]} cy={coords[coords.length - 1].split(',')[1]}
-        r="3" fill={color} />
+      <polygon points={area} fill={`url(#${id})`} />
+      <polyline points={coords.join(' ')} fill="none" stroke={color} strokeWidth="1.5"
+        strokeLinejoin="round" strokeLinecap="round" />
+      <circle
+        cx={coords[coords.length - 1].split(',')[0]}
+        cy={coords[coords.length - 1].split(',')[1]}
+        r="2.5" fill={color}
+      />
     </svg>
   )
 }
@@ -91,55 +113,87 @@ function ScriptHistoryDrawer({ name, onClose }) {
     try {
       await rollbackScript(name, index)
       onClose()
-    } catch (e) {
-      console.error('[ScriptHistory] rollback failed:', e)
-    } finally {
-      setRolling(null)
-    }
+    } catch (e) { console.error('[ScriptHistory] rollback failed:', e) }
+    finally { setRolling(null) }
   }
 
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+      background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }} onClick={onClose}>
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'var(--bg-card)', borderRadius: 16, padding: 24, width: '90%', maxWidth: 560,
-          boxShadow: 'var(--sh-raised)', border: '1px solid rgba(255,255,255,0.07)',
-          maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 16,
+          width: '90%', maxWidth: 560,
+          maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+          background: '#0d0d18',
+          border: `1px solid ${C.border}`,
+          borderRadius: 16,
+          overflow: 'hidden',
+          animation: 'fadeInUp 0.2s ease',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-main)' }}>
+        {/* Modal header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 18px',
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          <span style={{ fontFamily: C.sans, fontSize: '0.82rem', fontWeight: 600, color: C.text1 }}>
             Script History — {name.replace(/_/g, ' ')}
           </span>
-          <button onClick={onClose} style={{ all: 'unset', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20 }}>×</button>
+          <button onClick={onClose} style={{
+            all: 'unset', cursor: 'pointer',
+            color: C.text2, fontSize: 20, lineHeight: 1,
+          }}>×</button>
         </div>
 
-        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {loading && <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p>}
+        <div style={{
+          overflowY: 'auto',
+          display: 'flex', flexDirection: 'column',
+          padding: 16, gap: 8,
+        }}>
+          {loading && (
+            <p style={{ color: C.text3, fontSize: 13, fontFamily: C.mono }}>Loading…</p>
+          )}
           {!loading && history.length === 0 && (
-            <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No scripts pushed yet.</p>
+            <p style={{ color: C.text3, fontSize: 13, fontFamily: C.sans }}>No scripts pushed yet.</p>
           )}
           {history.map((entry, i) => (
-            <div key={i} className="neu-trough" style={{ padding: 12, borderRadius: 10 }}>
+            <div key={i} style={{
+              background: C.depth,
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: 12,
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-main)', marginBottom: 2 }}>
+                  <div style={{
+                    fontFamily: C.sans, fontSize: '0.75rem', fontWeight: 600,
+                    color: C.text1, letterSpacing: '0.04em',
+                  }}>
                     v{i} — {entry.description || '(no description)'}
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
+                  <div style={{
+                    fontSize: '0.62rem', color: C.text3,
+                    fontFamily: C.mono, marginTop: 2,
+                  }}>
                     {entry.ts ? new Date(entry.ts).toLocaleString() : ''}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button
                     onClick={() => setExpanded(expanded === i ? null : i)}
-                    style={{ all: 'unset', cursor: 'pointer', fontSize: 11, color: 'var(--text-dim)',
-                      padding: '4px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.05)' }}
+                    style={{
+                      all: 'unset', cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center',
+                      padding: '3px 8px', borderRadius: 6,
+                      fontFamily: C.sans, fontSize: '0.62rem', fontWeight: 500,
+                      border: `1px solid ${C.border}`, color: C.text2,
+                      transition: 'all 0.15s',
+                    }}
                   >
                     {expanded === i ? 'hide' : 'view'}
                   </button>
@@ -147,9 +201,15 @@ function ScriptHistoryDrawer({ name, onClose }) {
                     <button
                       onClick={() => doRollback(i)}
                       disabled={rolling === i}
-                      style={{ all: 'unset', cursor: rolling === i ? 'not-allowed' : 'pointer',
-                        fontSize: 11, fontWeight: 700, color: '#fff', padding: '4px 10px',
-                        borderRadius: 6, background: 'rgba(99,102,241,0.7)', opacity: rolling === i ? 0.6 : 1 }}
+                      style={{
+                        all: 'unset', cursor: 'pointer',
+                        display: 'inline-flex', alignItems: 'center',
+                        padding: '3px 10px', borderRadius: 6,
+                        fontFamily: C.sans, fontSize: '0.62rem', fontWeight: 600,
+                        background: 'rgba(26,46,255,0.14)', border: '1px solid rgba(26,46,255,0.35)',
+                        color: C.blue, transition: 'all 0.15s',
+                        opacity: rolling === i ? 0.5 : 1,
+                      }}
                     >
                       {rolling === i ? '…' : 'Rollback'}
                     </button>
@@ -158,10 +218,14 @@ function ScriptHistoryDrawer({ name, onClose }) {
               </div>
               {expanded === i && entry.script && (
                 <pre style={{
-                  marginTop: 10, padding: 10, borderRadius: 8,
-                  background: 'rgba(0,0,0,0.3)', fontSize: 11,
-                  color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace',
+                  marginTop: 10, padding: 10,
+                  background: '#0a0a14',
+                  borderRadius: 8,
+                  fontSize: '0.68rem', color: C.green,
+                  fontFamily: C.mono,
                   overflowX: 'auto', whiteSpace: 'pre', maxHeight: 200, overflowY: 'auto',
+                  border: `1px solid ${C.border}`,
+                  borderLeft: `2px solid ${C.accent}`,
                 }}>
                   {entry.script}
                 </pre>
@@ -177,8 +241,8 @@ function ScriptHistoryDrawer({ name, onClose }) {
 /* ── MCP Tools Panel ── */
 function McpToolsPanel({ deviceName, capabilities }) {
   const tools = capabilities || []
-  const [args, setArgs] = useState({})      // { toolName: { paramKey: value } }
-  const [results, setResults] = useState({}) // { toolName: result string }
+  const [args, setArgs] = useState({})
+  const [results, setResults] = useState({})
   const [calling, setCalling] = useState(null)
 
   const call = async (toolName) => {
@@ -188,52 +252,65 @@ function McpToolsPanel({ deviceName, capabilities }) {
       const text = r.data?.result?.content?.[0]?.text ?? JSON.stringify(r.data?.result ?? r.data, null, 2)
       setResults(prev => ({ ...prev, [toolName]: text }))
     } catch (e) {
-      setResults(prev => ({ ...prev, [toolName]: `❌ ${e.response?.data?.detail || e.message}` }))
-    } finally {
-      setCalling(null)
-    }
+      setResults(prev => ({ ...prev, [toolName]: `ERR: ${e.response?.data?.detail || e.message}` }))
+    } finally { setCalling(null) }
   }
 
   if (tools.length === 0) return (
-    <div style={{ color: 'var(--text-muted)', fontSize: 12, fontStyle: 'italic' }}>
-      No MCP tools in manifest yet. Reboot the device to publish capabilities.
+    <div style={{ color: C.text3, fontSize: '0.72rem', fontFamily: C.mono, padding: '8px 0' }}>
+      No MCP tools published. Reboot device to publish capabilities.
     </div>
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {tools.map(tool => (
         <div key={tool.name} style={{
-          background: 'rgba(99,102,241,0.05)',
-          border: '1px solid rgba(99,102,241,0.15)',
-          borderRadius: 8,
+          background: 'rgba(26,46,255,0.04)',
+          border: '1px solid rgba(26,46,255,0.12)',
+          borderRadius: 10,
           padding: '10px 12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(99,102,241,0.9)' }}>{tool.name}</span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 8 }}>{tool.description}</span>
+              <span style={{ fontFamily: C.mono, fontSize: '0.7rem', fontWeight: 600, color: '#6b8cff' }}>
+                {tool.name}
+              </span>
+              <span style={{ fontSize: '0.65rem', color: C.text3, marginLeft: 8, fontFamily: C.sans }}>
+                {tool.description}
+              </span>
             </div>
             <button
               onClick={() => call(tool.name)}
               disabled={calling === tool.name}
-              style={{ all: 'unset', cursor: 'pointer', fontSize: 11, fontWeight: 700,
-                color: '#fff', padding: '3px 10px', borderRadius: 6,
-                background: calling === tool.name ? 'rgba(99,102,241,0.4)' : 'rgba(99,102,241,0.7)' }}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center',
+                padding: '3px 10px', borderRadius: 6,
+                fontFamily: C.sans, fontSize: '0.62rem', fontWeight: 600,
+                background: 'rgba(26,46,255,0.10)', border: '1px solid rgba(26,46,255,0.25)',
+                color: '#6b8cff', transition: 'all 0.15s',
+                opacity: calling === tool.name ? 0.5 : 1,
+              }}
             >
-              {calling === tool.name ? '⏳' : '► Run'}
+              {calling === tool.name ? '…' : '▶ Run'}
             </button>
           </div>
 
-          {/* Auto-generated param inputs */}
           {tool.params && Object.entries(tool.params).map(([key, hint]) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <label style={{ fontSize: 10, color: 'var(--text-dim)', minWidth: 40, fontFamily: 'JetBrains Mono, monospace' }}>{key}</label>
+              <label style={{
+                fontSize: '0.62rem', color: C.text2,
+                minWidth: 40, fontFamily: C.mono,
+              }}>
+                {key}
+              </label>
               <input
                 style={{
-                  flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 4, padding: '3px 6px', fontSize: 11, color: 'var(--text-main)',
-                  fontFamily: 'JetBrains Mono, monospace', outline: 'none'
+                  flex: 1, background: 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${C.border}`, borderRadius: 6,
+                  padding: '3px 6px', fontSize: '0.7rem', fontFamily: C.mono,
+                  color: C.text1, outline: 'none',
                 }}
                 placeholder={Array.isArray(hint) ? hint.join(' | ') : String(hint)}
                 value={(args[tool.name] || {})[key] || ''}
@@ -245,14 +322,15 @@ function McpToolsPanel({ deviceName, capabilities }) {
             </div>
           ))}
 
-          {/* Result */}
           {results[tool.name] && (
             <pre style={{
-              marginTop: 6, padding: '6px 8px', borderRadius: 6,
-              background: 'rgba(0,0,0,0.4)', fontSize: 10,
-              color: results[tool.name].startsWith('❌') ? '#f87171' : '#86efac',
-              fontFamily: 'JetBrains Mono, monospace', overflowX: 'auto', whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all', margin: 0
+              marginTop: 6, padding: '6px 8px',
+              background: '#0a0a14', borderRadius: 8,
+              fontSize: '0.65rem',
+              color: results[tool.name].startsWith('ERR') ? C.red : '#86efac',
+              fontFamily: C.mono,
+              overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+              borderLeft: `2px solid ${results[tool.name].startsWith('ERR') ? C.red : C.green}`,
             }}>
               {results[tool.name]}
             </pre>
@@ -268,65 +346,80 @@ function ZigbeeColorPanel({ name, data }) {
   const [brightness, setBrightness] = useState(data.brightness || 127)
   const [colorTemp, setColorTemp]   = useState(300)
   const [color, setColor]           = useState('#ffffff')
-  const [mode, setMode]             = useState('white') // 'white' | 'color'
+  const [mode, setMode]             = useState('white')
 
   const apply = async (patch) => {
-    try { await zigbeeSet(name, patch) }
+    try { await commandDevice(name, 'set', patch) }
     catch (e) { console.error('[ZigbeeColorPanel]', e) }
   }
 
   return (
-    <div className="neu-trough" style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* Mode toggle */}
-      <div style={{ display: 'flex', gap: 6 }}>
+    <div style={{
+      background: C.depth,
+      border: `1px solid ${C.border}`,
+      borderRadius: 10,
+      padding: '12px 14px',
+      display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      {/* Mode tabs */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}` }}>
         {['white', 'color'].map(m => (
           <button key={m} onClick={() => setMode(m)}
             style={{
-              flex: 1, padding: '5px 0', borderRadius: 7, border: 'none', cursor: 'pointer',
-              fontSize: 11, fontWeight: 600,
-              background: mode === m ? 'var(--accent)' : 'rgba(255,255,255,0.05)',
-              color: mode === m ? '#fff' : 'var(--text-muted)',
-            }}>
-            {m === 'white' ? '☀️ White' : '🌈 Color'}
+              all: 'unset', cursor: 'pointer',
+              flex: 1, padding: '6px 0',
+              fontFamily: C.sans,
+              fontSize: '0.68rem', fontWeight: 600,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              color: mode === m ? C.blue : C.text2,
+              borderBottom: mode === m ? `2px solid ${C.accent}` : '2px solid transparent',
+              marginBottom: -1,
+              transition: 'color 0.15s, border-color 0.15s',
+              textAlign: 'center',
+            }}
+          >
+            {m === 'white' ? '○ White' : '◈ Color'}
           </button>
         ))}
       </div>
 
       {/* Brightness */}
       <div>
-        <label className="neu-label">Brightness</label>
+        <label style={{ fontFamily: C.sans, fontSize: '0.65rem', fontWeight: 600, color: C.text2, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          Brightness — {Math.round(brightness / 254 * 100)}%
+        </label>
         <input type="range" min="1" max="254" value={brightness}
           onChange={e => { setBrightness(+e.target.value); apply({ brightness: +e.target.value }) }}
-          style={{ width: '100%', accentColor: 'var(--accent)' }} />
+          style={{ width: '100%', accentColor: C.accent, marginTop: 4 }} />
       </div>
 
-      {/* Color Temperature (white mode) */}
       {mode === 'white' && (
         <div>
-          <label className="neu-label">Color Temp — {colorTemp <= 200 ? 'Cool' : colorTemp >= 370 ? 'Warm' : 'Neutral'}</label>
+          <label style={{ fontFamily: C.sans, fontSize: '0.65rem', fontWeight: 600, color: C.text2, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Color Temp — {colorTemp <= 200 ? 'Cool' : colorTemp >= 370 ? 'Warm' : 'Neutral'}
+          </label>
           <input type="range" min="150" max="500" value={colorTemp}
             onChange={e => { setColorTemp(+e.target.value); apply({ color_temp: +e.target.value }) }}
-            style={{ width: '100%', accentColor: '#fbbf24' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
+            style={{ width: '100%', accentColor: C.amber, marginTop: 4 }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', color: C.text3, marginTop: 2, fontFamily: C.mono }}>
             <span>Cool 6500K</span><span>Warm 2700K</span>
           </div>
         </div>
       )}
 
-      {/* RGB Picker (color mode) */}
       {mode === 'color' && (
         <div>
-          <label className="neu-label">Color</label>
+          <label style={{ fontFamily: C.sans, fontSize: '0.65rem', fontWeight: 600, color: C.text2, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            RGB Color
+          </label>
           <input type="color" value={color}
             onChange={e => {
               setColor(e.target.value)
-              const hex = e.target.value.replace('#','')
-              const r = parseInt(hex.slice(0,2),16)
-              const g = parseInt(hex.slice(2,4),16)
-              const b = parseInt(hex.slice(4,6),16)
-              apply({ color: { r, g, b } })
+              const hex = e.target.value.replace('#', '')
+              apply({ color: { r: parseInt(hex.slice(0,2),16), g: parseInt(hex.slice(2,4),16), b: parseInt(hex.slice(4,6),16) } })
             }}
-            style={{ width: '100%', height: 36, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'transparent' }} />
+            style={{ width: '100%', height: 34, border: 'none', cursor: 'pointer', background: 'transparent', marginTop: 4 }}
+          />
         </div>
       )}
 
@@ -334,12 +427,26 @@ function ZigbeeColorPanel({ name, data }) {
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
         {['blink','breathe','colorloop'].map(fx => (
           <button key={fx} onClick={() => apply({ effect: fx })}
-            className="neu-btn" style={{ padding: '4px 10px', fontSize: 10 }}>
+            style={{
+              all: 'unset', cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center',
+              padding: '3px 10px', borderRadius: 6,
+              fontFamily: C.sans, fontSize: '0.62rem', fontWeight: 500,
+              border: `1px solid ${C.border}`, color: C.text2,
+              transition: 'all 0.15s',
+            }}>
             {fx}
           </button>
         ))}
         <button onClick={() => apply({ effect: 'stop_effect' })}
-          className="neu-btn" style={{ padding: '4px 10px', fontSize: 10, color: '#f87171' }}>
+          style={{
+            all: 'unset', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center',
+            padding: '3px 10px', borderRadius: 6,
+            fontFamily: C.sans, fontSize: '0.62rem', fontWeight: 500,
+            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+            color: C.red, transition: 'all 0.15s',
+          }}>
           stop
         </button>
       </div>
@@ -347,6 +454,9 @@ function ZigbeeColorPanel({ name, data }) {
   )
 }
 
+/* ════════════════════════════════════════════════════
+   MAIN: DeviceCard
+════════════════════════════════════════════════════ */
 export default function DeviceCard({ name, data, wsMessages }) {
   const [toggling, setToggling]         = useState(false)
   const [previewTick, setPreviewTick]   = useState(Date.now())
@@ -382,7 +492,6 @@ export default function DeviceCard({ name, data, wsMessages }) {
 
   const showCameraPreview = data.type === 'security_camera' && isOn
 
-  /* Camera preview refresh */
   useEffect(() => {
     if (!showCameraPreview) { setPreviewError(false); return }
     setPreviewError(false)
@@ -391,7 +500,6 @@ export default function DeviceCard({ name, data, wsMessages }) {
     return () => clearInterval(t)
   }, [showCameraPreview])
 
-  /* Telemetry polling for numeric sensors */
   useEffect(() => {
     if (!isNumeric && !isEdge) return
     let cancelled = false
@@ -407,201 +515,308 @@ export default function DeviceCard({ name, data, wsMessages }) {
 
   const previewUrl = useMemo(() => getDevicePreviewUrl(name, previewTick), [name, previewTick])
 
-  /* Card glow */
-  const glowStyle = isOffline
-    ? { borderColor: 'rgba(239,68,68,0.25)', boxShadow: 'var(--sh-flat), 0 0 16px rgba(239,68,68,0.08)' }
+  /* Status-dependent colors */
+  const borderColor = isOffline
+    ? 'rgba(239,68,68,0.22)'
     : isOn && !isNumeric
-      ? { borderColor: 'rgba(34,197,94,0.2)', boxShadow: 'var(--sh-flat), 0 0 20px rgba(34,197,94,0.07)' }
-      : {}
+      ? 'rgba(26,46,255,0.22)'
+      : C.border
+
+  const src = data.integration_source || (
+    data.ha_entity ? 'ha' : data.zigbee || data.type?.startsWith('zigbee_') ? 'zigbee' : 'mqtt'
+  )
+  const badge = INTEGRATION_BADGE[src] || INTEGRATION_BADGE.mqtt
+
+  /* Toggle button inline style */
+  const toggleStyle = {
+    all: 'unset', cursor: isOffline ? 'not-allowed' : 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: 8, width: '100%', padding: '11px 0',
+    borderRadius: 10,
+    fontFamily: C.sans,
+    fontSize: '0.72rem', fontWeight: 700,
+    letterSpacing: '0.1em', textTransform: 'uppercase',
+    transition: 'all 0.15s ease',
+    border: '1px solid',
+    userSelect: 'none',
+    ...(isOffline ? {
+      background: 'transparent',
+      borderColor: 'rgba(239,68,68,0.15)',
+      color: 'rgba(239,68,68,0.38)',
+    } : isOn ? {
+      background: 'rgba(26,46,255,0.10)',
+      borderColor: 'rgba(26,46,255,0.35)',
+      color: '#6b8cff',
+      boxShadow: '0 0 18px rgba(26,46,255,0.08)',
+    } : {
+      background: 'transparent',
+      borderColor: C.border,
+      color: C.text2,
+    }),
+  }
+
+  /* Edge action button style */
+  const edgeBtnStyle = {
+    all: 'unset', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+    fontFamily: C.sans,
+    fontSize: '0.62rem', fontWeight: 600,
+    letterSpacing: '0.08em', textTransform: 'uppercase',
+    color: C.text2,
+    padding: '4px 10px', borderRadius: 8,
+    border: `1px solid rgba(26,46,255,0.18)`,
+    background: 'rgba(26,46,255,0.05)',
+    transition: 'all 0.15s',
+  }
 
   return (
     <>
-      <style>{`
-        .dev-card { transition: box-shadow 0.3s, transform 0.2s; }
-        .dev-card:hover { transform: translateY(-2px); }
-        .dev-onoff-btn {
-          all: unset; cursor: pointer; display: flex; align-items: center;
-          justify-content: center; gap: 8px; width: 100%; padding: 13px 0;
-          border-radius: 12px; font-size: 14px; font-weight: 800;
-          letter-spacing: 0.12em; text-transform: uppercase;
-          transition: all 0.18s ease; position: relative; overflow: hidden; user-select: none;
-        }
-        .dev-onoff-btn.on {
-          background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
-          box-shadow: 0 4px 18px rgba(34,197,94,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
-          color: #fff;
-        }
-        .dev-onoff-btn.off {
-          background: var(--bg-dark); box-shadow: var(--sh-trough);
-          color: var(--text-dim); border: 1px solid rgba(255,255,255,0.05);
-        }
-        .dev-onoff-btn.offline-btn {
-          background: var(--bg-dark); box-shadow: var(--sh-trough);
-          color: rgba(239,68,68,0.6); border: 1px solid rgba(239,68,68,0.15); cursor: not-allowed;
-        }
-        .dev-onoff-btn.on:hover  { box-shadow: 0 6px 28px rgba(34,197,94,0.5), inset 0 1px 0 rgba(255,255,255,0.2); }
-        .dev-onoff-btn.off:hover { color: var(--text-main); background: rgba(255,255,255,0.04); }
-        .dev-onoff-btn:disabled  { opacity: 0.5; cursor: not-allowed; }
-        .dev-onoff-btn::after {
-          content: ''; position: absolute; inset: 0;
-          background: rgba(255,255,255,0); transition: background 0.15s;
-        }
-        .dev-onoff-btn:active::after { background: rgba(255,255,255,0.07); }
-        .history-btn {
-          all: unset; cursor: pointer; font-size: 11px; font-weight: 600;
-          color: var(--text-dim); padding: 5px 10px; border-radius: 8px;
-          background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2);
-          transition: all 0.15s; letter-spacing: 0.04em;
-        }
-        .history-btn:hover { background: rgba(99,102,241,0.2); color: var(--text-main); }
-      `}</style>
-
       {showHistory && <ScriptHistoryDrawer name={name} onClose={() => setShowHistory(false)} />}
 
       <div
-        className="neu-plate dev-card"
-        style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, ...glowStyle }}
+        style={{
+          background: C.panel,
+          borderRadius: 12,
+          border: `1px solid ${borderColor}`,
+          padding: 18,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+          position: 'relative',
+          overflow: 'hidden',
+          transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.2s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)' }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)' }}
       >
-        {/* ── Top: icon + name + badges ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          {/* Icon */}
+        {/* ── Header row: icon + name + badges ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+
+          {/* Icon box */}
           <div style={{
-            width: 72, height: 72, borderRadius: 18,
-            background: isOffline ? 'rgba(239,68,68,0.08)' : isOn ? icon.glow.replace('0.25', '0.15') : icon.bg,
-            border: `1px solid ${isOffline ? 'rgba(239,68,68,0.2)' : isOn ? icon.glow : 'rgba(255,255,255,0.05)'}`,
+            width: 48, height: 48,
+            borderRadius: 10,
+            background: isOffline
+              ? 'rgba(239,68,68,0.06)'
+              : icon.glow.replace('0.3', '0.08'),
+            border: `1px solid ${isOffline ? 'rgba(239,68,68,0.2)' : icon.glow.replace('0.3', '0.2')}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0, fontSize: 34, transition: 'all 0.4s ease',
-            boxShadow: isOn && !isOffline ? `0 0 20px ${icon.glow}` : 'none',
-            filter: isOffline ? 'grayscale(1) brightness(0.5)' : isOn ? 'brightness(1.1)' : 'grayscale(0.3) brightness(0.85)',
+            flexShrink: 0,
+            fontSize: 22,
+            color: isOffline ? 'rgba(239,68,68,0.5)' : icon.color,
+            filter: isOffline ? 'grayscale(1) brightness(0.5)' : 'none',
+            textShadow: isOffline ? 'none' : `0 0 12px ${icon.glow}`,
+            transition: 'all 0.3s ease',
+            fontFamily: 'monospace',
           }}>
-            {icon.emoji}
+            {icon.icon}
           </div>
 
-          {/* Name + type + time */}
+          {/* Name + meta */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: 15, fontWeight: 700, color: 'var(--text-main)',
-              letterSpacing: '0.01em', overflow: 'hidden', textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap', marginBottom: 4,
+              fontFamily: C.sans,
+              fontSize: '0.95rem', fontWeight: 700,
+              color: C.text1, letterSpacing: '0.02em',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              marginBottom: 6,
             }}>
               {deviceLabel}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span className="neu-badge" style={{ fontSize: 10 }}>{data.type ?? 'generic'}</span>
-              {data.location && (
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>📍 {data.location}</span>
-              )}
-              {/* Offline badge */}
+
+            {/* Badges row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+              <span style={{
+                fontFamily: C.mono, fontSize: '0.58rem', fontWeight: 500,
+                color: C.text3, background: C.depth,
+                border: `1px solid ${C.border}`, borderRadius: 4,
+                padding: '1px 6px',
+              }}>
+                {data.type ?? 'generic'}
+              </span>
+              <span style={{
+                fontFamily: C.mono,
+                fontSize: '0.58rem', fontWeight: 600,
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: badge.color, background: badge.bg,
+                border: `1px solid ${badge.border}`,
+                borderRadius: 4, padding: '1px 6px',
+              }}>
+                {badge.label}
+              </span>
               {isOffline && (
                 <span style={{
-                  fontSize: 10, fontWeight: 700, color: '#ef4444',
-                  background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)',
-                  borderRadius: 6, padding: '2px 6px', letterSpacing: '0.08em',
+                  fontFamily: C.mono,
+                  fontSize: '0.58rem', fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  color: C.red,
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.25)',
+                  borderRadius: 4, padding: '1px 6px',
                 }}>
                   OFFLINE
                 </span>
               )}
-              {/* Edge device — script history & console buttons */}
-              {isEdge && (
-                <>
-                  <button className="history-btn" onClick={() => setShowHistory(true)}>
-                    📜 Scripts
-                  </button>
-                  <button className="history-btn" onClick={() => setShowConsole(!showConsole)} style={{ marginLeft: 4 }}>
-                    💻 Console
-                  </button>
-                  <button className="history-btn" onClick={() => setShowTools(!showTools)} style={{ marginLeft: 4, borderColor: 'rgba(99,102,241,0.3)' }}>
-                    🔧 Tools
-                  </button>
-                </>
+              {data.location && (
+                <span style={{
+                  display: 'flex', alignItems: 'center', gap: 3,
+                  fontSize: '0.6rem', color: C.text3,
+                  fontFamily: C.mono,
+                }}>
+                  <MapPin size={9} />
+                  {data.location}
+                </span>
               )}
             </div>
-            {lastUpdated && (
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>
-                Updated {lastUpdated}
+
+            {/* Edge device action buttons */}
+            {isEdge && (
+              <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                <button style={edgeBtnStyle} onClick={() => setShowHistory(true)}>
+                  <ScrollText size={10} /> Scripts
+                </button>
+                <button style={edgeBtnStyle} onClick={() => setShowConsole(!showConsole)}>
+                  <Terminal size={10} /> Console
+                </button>
+                <button style={edgeBtnStyle} onClick={() => setShowTools(!showTools)}>
+                  <Wrench size={10} /> Tools
+                </button>
               </div>
             )}
-            {/* Heartbeat indicator for edge devices */}
+
+            {/* Timestamps */}
+            {lastUpdated && (
+              <div style={{ fontFamily: C.mono, fontSize: '0.6rem', color: C.text3, marginTop: 6 }}>
+                updated {lastUpdated}
+              </div>
+            )}
             {isEdge && data.last_heartbeat && (
-              <div style={{ fontSize: 10, color: isOffline ? '#ef4444' : 'rgba(34,197,94,0.7)', marginTop: 2, fontFamily: 'JetBrains Mono, monospace' }}>
-                {isOffline ? '● no heartbeat' : `● alive ${new Date(data.last_heartbeat).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`}
+              <div style={{
+                fontFamily: C.mono, fontSize: '0.6rem',
+                color: isOffline ? 'rgba(239,68,68,0.5)' : 'rgba(107,140,255,0.7)',
+                marginTop: 2,
+              }}>
+                {isOffline
+                  ? '● no heartbeat'
+                  : `● ${new Date(data.last_heartbeat).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                }
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Big numeric value + sparkline ── */}
+        {/* ── Numeric value + sparkline ── */}
         {isNumeric && (
-          <div className="neu-trough" style={{ padding: '14px 18px' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: telemetry.length > 1 ? 10 : 0 }}>
+          <div style={{
+            background: C.depth,
+            border: `1px solid ${C.border}`,
+            borderLeft: `2px solid ${C.accent}`,
+            borderRadius: 10,
+            padding: '12px 16px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: telemetry.length > 1 ? 10 : 0 }}>
               <span style={{
-                fontSize: 36, fontWeight: 800, color: 'var(--accent)',
-                fontVariantNumeric: 'tabular-nums', fontFamily: 'JetBrains Mono, monospace',
-                textShadow: 'var(--glow-sm)',
+                fontFamily: C.sans,
+                fontSize: '2.4rem', fontWeight: 700,
+                color: C.blue, letterSpacing: '-0.02em',
+                fontVariantNumeric: 'tabular-nums',
+                textShadow: `0 0 20px rgba(26,46,255,0.35)`,
               }}>
                 {data.status}
               </span>
-              {data.unit && <span style={{ fontSize: 16, color: 'var(--text-dim)' }}>{data.unit}</span>}
+              {data.unit && (
+                <span style={{ fontFamily: C.mono, fontSize: '0.85rem', color: C.text2 }}>
+                  {data.unit}
+                </span>
+              )}
               {telemetry.length > 0 && (
                 <a
                   href={getTelemetryExportUrl(name)}
                   download={`${name}_telemetry.csv`}
-                  style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', textDecoration: 'none',
-                    padding: '3px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.08)', transition: 'all 0.15s' }}
+                  style={{
+                    marginLeft: 'auto',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    fontSize: '0.62rem', color: C.text3,
+                    textDecoration: 'none', fontFamily: C.sans,
+                    fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
+                    padding: '3px 8px', borderRadius: 6,
+                    border: `1px solid ${C.border}`,
+                    transition: 'all 0.15s',
+                  }}
                   title="Download CSV"
                 >
-                  ⬇ CSV
+                  <Download size={10} /> CSV
                 </a>
               )}
             </div>
-            {telemetry.length > 1 && <Sparkline points={telemetry} />}
+            {telemetry.length > 1 && <Sparkline points={telemetry} color={C.accent} />}
           </div>
         )}
 
-        {/* ── Edge device sparkline (non-numeric but has telemetry) ── */}
+        {/* ── Edge sparkline ── */}
         {isEdge && !isNumeric && telemetry.length > 1 && (
-          <div className="neu-trough" style={{ padding: '10px 14px' }}>
+          <div style={{
+            background: C.depth,
+            border: `1px solid rgba(26,46,255,0.12)`,
+            borderLeft: `2px solid rgba(26,46,255,0.4)`,
+            borderRadius: 10,
+            padding: '8px 12px',
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>ADC telemetry</span>
-              <a
-                href={getTelemetryExportUrl(name)}
-                download={`${name}_telemetry.csv`}
-                style={{ fontSize: 10, color: 'var(--text-muted)', textDecoration: 'none',
-                  padding: '3px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.08)' }}
-                title="Download CSV"
-              >
-                ⬇ CSV
+              <span style={{ fontFamily: C.mono, fontSize: '0.6rem', color: C.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                ADC telemetry
+              </span>
+              <a href={getTelemetryExportUrl(name)} download={`${name}_telemetry.csv`}
+                style={{
+                  fontSize: '0.6rem', color: C.text3, textDecoration: 'none',
+                  display: 'flex', alignItems: 'center', gap: 3, fontFamily: C.sans,
+                  fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
+                }}>
+                <Download size={9} /> CSV
               </a>
             </div>
-            <Sparkline points={telemetry} color="rgba(99,102,241,0.9)" />
+            <Sparkline points={telemetry} color={C.accent} />
           </div>
         )}
 
         {/* ── Camera preview ── */}
         {data.type === 'security_camera' && (
-          <div className="neu-trough" style={{ padding: 8, borderRadius: 12 }}>
+          <div style={{
+            background: C.depth,
+            border: `1px solid ${C.border}`,
+            borderRadius: 10,
+            padding: 8,
+          }}>
             {showCameraPreview && (
               <>
                 <img
                   src={previewUrl}
                   alt={`${deviceLabel} live`}
-                  style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 8, display: previewError ? 'none' : 'block' }}
+                  style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 6, display: previewError ? 'none' : 'block' }}
                   onError={() => setPreviewError(true)}
                   onLoad={() => setPreviewError(false)}
                 />
-                {previewError && (
-                  <p className="neu-alert-warn" style={{ margin: 0, fontSize: 11 }}>Preview warming up…</p>
+                 {previewError && (
+                  <p style={{
+                    margin: 0, fontSize: '0.72rem',
+                    color: C.text3, fontFamily: C.sans,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 6, padding: '6px 10px',
+                  }}>
+                    Preview warming up…
+                  </p>
                 )}
               </>
             )}
             {lastDetectionTime ? (
-              <p style={{ margin: showCameraPreview ? '8px 0 0' : 0, fontSize: 11, color: 'var(--text-dim)' }}>
-                Detection: <strong style={{ color: '#fbbf24' }}>{data.last_detection.detected?.join(', ')}</strong> @ {lastDetectionTime}
+              <p style={{ margin: showCameraPreview ? '8px 0 0' : 0, fontSize: '0.72rem', color: C.text2, fontFamily: C.mono }}>
+                detect: <strong style={{ color: '#6b8cff' }}>{data.last_detection.detected?.join(', ')}</strong> @ {lastDetectionTime}
               </p>
             ) : (
-              <p style={{ margin: showCameraPreview ? '8px 0 0' : 0, fontSize: 11, color: 'var(--text-muted)' }}>CV monitor ready.</p>
+              <p style={{ margin: showCameraPreview ? '8px 0 0' : 0, fontSize: '0.72rem', color: C.text3, fontFamily: C.mono }}>
+                CV monitor ready.
+              </p>
             )}
           </div>
         )}
@@ -610,15 +825,12 @@ export default function DeviceCard({ name, data, wsMessages }) {
         {!isNumeric && (
           <button
             id={`toggle-${name}`}
-            className={`dev-onoff-btn ${isOffline ? 'offline-btn' : isOn ? 'on' : 'off'}`}
+            style={toggleStyle}
             onClick={toggle}
             disabled={toggling || isOffline}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M12 2v6"/>
-              <path d="M6.3 5.3A9 9 0 1 0 17.7 5.3"/>
-            </svg>
-            {isOffline ? 'OFFLINE — No heartbeat' : toggling ? 'Switching…' : isOn ? 'ON — Tap to turn off' : 'OFF — Tap to turn on'}
+            <Power size={14} strokeWidth={2.5} />
+            {isOffline ? 'OFFLINE' : toggling ? 'Switching…' : isOn ? 'ON — Tap to turn off' : 'OFF — Tap to turn on'}
           </button>
         )}
 
@@ -632,17 +844,21 @@ export default function DeviceCard({ name, data, wsMessages }) {
           <EdgeConsole deviceName={name} wsMessages={wsMessages} />
         )}
 
-        {/* ── MCP Tools Panel ── */}
+        {/* ── MCP Tools ── */}
         {isEdge && showTools && (
           <div style={{
-            background: 'rgba(99,102,241,0.04)',
-            border: '1px solid rgba(99,102,241,0.15)',
-            borderRadius: 8,
+            background: 'rgba(26,46,255,0.04)',
+            border: '1px solid rgba(26,46,255,0.12)',
+            borderRadius: 10,
             padding: '10px 12px',
-            marginTop: 4
           }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.8)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-              🔧 MCP Native Tools
+            <div style={{
+              fontFamily: C.sans,
+              fontSize: '0.65rem', fontWeight: 600,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              color: '#6b8cff', marginBottom: 10,
+            }}>
+              MCP Native Tools
             </div>
             <McpToolsPanel deviceName={name} capabilities={data.capabilities} />
           </div>

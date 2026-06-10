@@ -97,6 +97,21 @@ class Storage:
             
             row['simulated'] = bool(row.get('simulated'))
             row['zigbee'] = bool(row.get('zigbee'))
+
+            # Ensure integration_source is always set — default to 'mqtt' for
+            # legacy rows that predate the column.
+            if not row.get('integration_source'):
+                if row['zigbee']:
+                    row['integration_source'] = 'zigbee'
+                elif row.get('type', '').startswith('ha_'):
+                    row['integration_source'] = 'ha'
+                else:
+                    row['integration_source'] = 'mqtt'
+
+            # Derive ha_entity as a virtual boolean from integration_source so
+            # that any code still using device.get("ha_entity") keeps working.
+            row['ha_entity'] = row.get('integration_source') == 'ha'
+
             row['script_history'] = history_map.get(row['name'], [])
             devices[row['name']] = row
         return devices
@@ -104,12 +119,24 @@ class Storage:
     def register_device(self, device: dict):
         name = device["name"]
         capabilities = json.dumps(device.get("capabilities", []))
+
+        # Derive integration_source if not explicitly provided.
+        integration_source = device.get("integration_source")
+        if not integration_source:
+            if device.get("zigbee"):
+                integration_source = "zigbee"
+            elif str(device.get("type", "")).startswith("ha_") or device.get("ha_entity"):
+                integration_source = "ha"
+            else:
+                integration_source = "mqtt"
+
         self._execute('''
             INSERT OR REPLACE INTO devices (
                 name, topic_base, type, status, location, description, 
                 unit, brightness, last_updated, last_heartbeat, created_at, 
-                capabilities, simulated, zigbee, ieee_address, vendor, model
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                capabilities, simulated, zigbee, ieee_address, vendor, model,
+                integration_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             name,
             device.get("topic_base"),
@@ -127,13 +154,25 @@ class Storage:
             device.get("zigbee", False),
             device.get("ieee_address", ""),
             device.get("vendor", ""),
-            device.get("model", "")
+            device.get("model", ""),
+            integration_source,
         ), commit=True)
 
     def ensure_device(self, device: dict) -> dict:
         """Register a built-in device if missing, otherwise refresh metadata without losing state."""
         name = device["name"]
         rows = self._execute('SELECT * FROM devices WHERE name = ?', (name,))
+
+        # Derive integration_source
+        integration_source = device.get("integration_source")
+        if not integration_source:
+            if device.get("zigbee"):
+                integration_source = "zigbee"
+            elif str(device.get("type", "")).startswith("ha_") or device.get("ha_entity"):
+                integration_source = "ha"
+            else:
+                integration_source = "mqtt"
+
         if not rows:
             record = {
                 "name": name,
@@ -151,23 +190,36 @@ class Storage:
                 "zigbee": device.get("zigbee", False),
                 "ieee_address": device.get("ieee_address", ""),
                 "vendor": device.get("vendor", ""),
-                "model": device.get("model", "")
+                "model": device.get("model", ""),
+                "integration_source": integration_source,
             }
             self.register_device(record)
             record["script_history"] = []
+            record["ha_entity"] = integration_source == "ha"
             return record
 
         existing = rows[0]
         updates = []
         params = []
-        for key in ("topic_base", "type", "unit", "location", "description", "simulated", "capabilities", "zigbee", "ieee_address", "vendor", "model"):
-            if key in device:
+        update_keys = (
+            "topic_base", "type", "unit", "location", "description",
+            "simulated", "capabilities", "zigbee", "ieee_address",
+            "vendor", "model", "integration_source",
+        )
+        for key in update_keys:
+            # Always update integration_source if provided; for other fields
+            # only update if the key is explicitly in the incoming device dict.
+            if key == "integration_source":
+                updates.append("integration_source = ?")
+                params.append(integration_source)
+                existing["integration_source"] = integration_source
+            elif key in device:
                 updates.append(f"{key} = ?")
                 val = device[key]
                 if key == "capabilities":
                     val = json.dumps(val)
                 params.append(val)
-                existing[key] = device[key] # for return
+                existing[key] = device[key]
 
         if "status" in device:
             updates.append("status = ?")
@@ -185,6 +237,7 @@ class Storage:
              except:
                  existing['capabilities'] = []
 
+        existing["ha_entity"] = integration_source == "ha"
         existing["script_history"] = self.get_script_history(name)
         return existing
 
@@ -375,3 +428,101 @@ class Storage:
         if rows and rows[0]['image_data']:
             return rows[0]['image_data']
         return None
+
+    # ── Device Groups ──
+
+    def get_all_groups(self) -> list:
+        """Return all groups, each with its list of member device names."""
+        groups = self._execute('SELECT * FROM groups ORDER BY created_at ASC')
+        if not groups:
+            return []
+        # Batch fetch memberships
+        memberships = self._execute('SELECT group_id, device_name FROM device_groups')
+        membership_map: dict = {}
+        for m in memberships:
+            gid = m['group_id']
+            if gid not in membership_map:
+                membership_map[gid] = []
+            membership_map[gid].append(m['device_name'])
+
+        result = []
+        for g in groups:
+            result.append({
+                'id': g['id'],
+                'name': g['name'],
+                'color': g['color'] or '#6b8cff',
+                'icon': g['icon'] or '⬡',
+                'created_at': g['created_at'],
+                'devices': membership_map.get(g['id'], []),
+            })
+        return result
+
+    def create_group(self, name: str, color: str = '#6b8cff', icon: str = '⬡') -> dict:
+        gid = str(uuid.uuid4())[:8]
+        now = datetime.now().isoformat()
+        self._execute(
+            'INSERT INTO groups (id, name, color, icon, created_at) VALUES (?, ?, ?, ?, ?)',
+            (gid, name, color, icon, now),
+            commit=True
+        )
+        return {'id': gid, 'name': name, 'color': color, 'icon': icon, 'created_at': now, 'devices': []}
+
+    def update_group(self, group_id: str, name: str = None, color: str = None, icon: str = None) -> dict | None:
+        rows = self._execute('SELECT * FROM groups WHERE id = ?', (group_id,))
+        if not rows:
+            return None
+        g = rows[0]
+        new_name  = name  if name  is not None else g['name']
+        new_color = color if color is not None else g['color']
+        new_icon  = icon  if icon  is not None else g['icon']
+        self._execute(
+            'UPDATE groups SET name = ?, color = ?, icon = ? WHERE id = ?',
+            (new_name, new_color, new_icon, group_id),
+            commit=True
+        )
+        members = self._execute('SELECT device_name FROM device_groups WHERE group_id = ?', (group_id,))
+        return {
+            'id': group_id, 'name': new_name, 'color': new_color, 'icon': new_icon,
+            'created_at': g['created_at'],
+            'devices': [m['device_name'] for m in members],
+        }
+
+    def delete_group(self, group_id: str) -> bool:
+        rows = self._execute('SELECT id FROM groups WHERE id = ?', (group_id,))
+        if not rows:
+            return False
+        self._execute('DELETE FROM device_groups WHERE group_id = ?', (group_id,), commit=True)
+        self._execute('DELETE FROM groups WHERE id = ?', (group_id,), commit=True)
+        return True
+
+    def add_device_to_group(self, group_id: str, device_name: str) -> bool:
+        """Add a device to a group. Returns False if group or device doesn't exist."""
+        group_rows  = self._execute('SELECT id FROM groups WHERE id = ?', (group_id,))
+        device_rows = self._execute('SELECT name FROM devices WHERE name = ?', (device_name,))
+        if not group_rows or not device_rows:
+            return False
+        self._execute(
+            'INSERT OR IGNORE INTO device_groups (device_name, group_id) VALUES (?, ?)',
+            (device_name, group_id),
+            commit=True
+        )
+        return True
+
+    def remove_device_from_group(self, group_id: str, device_name: str) -> bool:
+        rows = self._execute(
+            'SELECT device_name FROM device_groups WHERE group_id = ? AND device_name = ?',
+            (group_id, device_name)
+        )
+        if not rows:
+            return False
+        self._execute(
+            'DELETE FROM device_groups WHERE group_id = ? AND device_name = ?',
+            (group_id, device_name),
+            commit=True
+        )
+        return True
+
+    def get_device_group_ids(self, device_name: str) -> list:
+        """Return list of group IDs a device belongs to."""
+        rows = self._execute('SELECT group_id FROM device_groups WHERE device_name = ?', (device_name,))
+        return [r['group_id'] for r in rows]

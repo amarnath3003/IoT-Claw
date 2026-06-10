@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+from app.integrations import IntegrationRegistry
 from app.services.ai_agent import run_chat, run_chat_stream
 from app.services.mqtt_client import MQTTClient
 from app.core.storage import Storage
@@ -70,8 +71,14 @@ mcp = MCPClient(mqtt=mqtt, storage=storage)
 # Link MCPClient's pending registry into the MQTT client for response routing
 mqtt.set_mcp_response_registry(mcp.pending)
 
-zigbee_adapter = None
-ha_adapter = None
+# ── Integration Registry ──────────────────────────────────────────────────────
+# Populated during lifespan startup based on enabled env vars.
+registry = IntegrationRegistry()
+
+# Legacy direct references kept for Zigbee/HA-specific REST endpoints.
+zigbee_adapter: ZigbeeAdapter | None = None
+ha_adapter: HomeAssistantAdapter | None = None
+
 
 async def telemetry_cleanup():
     while True:
@@ -83,52 +90,50 @@ async def telemetry_cleanup():
             conn.close()
         except Exception as e:
             print(f"Telemetry cleanup error: {e}")
-        await asyncio.sleep(86400) # Run once a day
+        await asyncio.sleep(86400)  # Run once a day
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # ── Startup ───────────────────────────────────────────────────────────────
     camera_service.bind_loop(asyncio.get_running_loop())
     engine.bind_loop(asyncio.get_running_loop())
     camera_service.ensure_registered()
+
+    # Start MQTT transport (legacy synchronous connect path)
     mqtt_host = os.getenv("MQTT_BROKER_HOST", "localhost")
     mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
     mqtt.connect(host=mqtt_host, port=mqtt_port)
 
     global zigbee_adapter, ha_adapter
+
     if os.getenv("ZIGBEE2MQTT_ENABLED", "false").lower() == "true":
-        zigbee_adapter = ZigbeeAdapter(
-            mqtt_client=mqtt,
-            storage=storage,
-            ws_broadcast_fn=manager.broadcast
-        )
+        zigbee_adapter = ZigbeeAdapter(storage, manager.broadcast, mqtt_client=mqtt)
         mqtt.set_zigbee_adapter(zigbee_adapter)
-        zigbee_adapter.start()
-        print("[Zigbee] ZigbeeAdapter started")
-        # Store a ref for AI agent to access
-        storage._zigbee_ref = zigbee_adapter
+        registry.register(zigbee_adapter)
+        print("[Zigbee] ZigbeeAdapter registered")
 
     if os.getenv("HA_ENABLED", "false").lower() == "true":
-        ha_adapter = HomeAssistantAdapter(
-            storage=storage,
-            ws_broadcast_fn=manager.broadcast
-        )
-        asyncio.create_task(ha_adapter.run())
-        storage._ha_ref = ha_adapter
-        print("[HA] HomeAssistantAdapter started")
+        ha_adapter = HomeAssistantAdapter(storage, manager.broadcast)
+        registry.register(ha_adapter)
+        print("[HA] HomeAssistantAdapter registered")
+
+    # Start all registered integrations (Zigbee subscribes, HA launches WS loop)
+    await registry.start_all()
 
     asyncio.create_task(engine.run())
     autonomous.bind_loop(asyncio.get_running_loop())
     asyncio.create_task(autonomous.run())
     asyncio.create_task(telemetry_cleanup())
-    # Start Telegram bot (runs in background; no-ops gracefully if token missing)
+    # Start Telegram bot (no-ops gracefully if token missing)
     asyncio.create_task(
         run_telegram_bot(run_chat, mqtt, storage, engine, manager.broadcast)
     )
     yield
-    # Shutdown
-    if ha_adapter:
-        ha_adapter.stop()
+
+    # ── Shutdown ──────────────────────────────────────────────────────────────
+    # stop_all() runs in reverse registration order: HA → Zigbee (before MQTT)
+    await registry.stop_all()
     camera_service.stop()
     mqtt.disconnect()
 
@@ -159,7 +164,7 @@ async def chat(body: dict):
     """Accept a chat message and return AI reply."""
     user_message = body.get("message", "")
     history = body.get("history", [])
-    result = await run_chat(user_message, history, mqtt, storage, engine=engine)
+    result = await run_chat(user_message, history, mqtt, storage, engine=engine, registry=registry)
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return result
 
@@ -171,7 +176,7 @@ async def chat_stream(body: dict):
     history = body.get("history", [])
 
     async def generate():
-        async for chunk in run_chat_stream(user_message, history, mqtt, storage, engine=engine):
+        async for chunk in run_chat_stream(user_message, history, mqtt, storage, engine=engine, registry=registry):
             yield chunk
         await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
 
@@ -190,9 +195,14 @@ async def get_state():
 
 @app.post("/devices")
 async def register_device(body: dict):
-    """Register a new MQTT device."""
+    """Register a new device (MQTT, Zigbee, or HA)."""
     storage.register_device(body)
-    mqtt.subscribe(body["topic_base"] + "/state")
+    # Only subscribe to MQTT for protocols that actually use it.
+    # HA devices use a virtual topic_base (ha/<entity_id>) — subscribing
+    # to that on MQTT would silently receive nothing and is misleading.
+    src = body.get("integration_source", "mqtt")
+    if src != "ha":
+        mqtt.subscribe(body["topic_base"] + "/state")
     storage.add_log(
         "success",
         "api",
@@ -205,7 +215,7 @@ async def register_device(body: dict):
 
 @app.delete("/devices/{name}")
 async def delete_device(name: str):
-    """Delete a registered MQTT device."""
+    """Delete a registered device."""
     ok = storage.delete_device(name)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
@@ -216,46 +226,20 @@ async def delete_device(name: str):
 
 @app.post("/devices/{name}/command")
 async def command_device(name: str, body: dict):
-    """Send an ON/OFF command to a device, including simulated devices."""
+    """Send a command to a device, routing to the correct integration automatically."""
     command = str(body.get("command", "")).upper()
     device = storage.get_all_devices().get(name)
-    is_zigbee = device and device.get("zigbee")
-    is_ha = device and device.get("ha_entity")
+    if not device:
+        raise HTTPException(status_code=404, detail=f"Device '{name}' not found")
 
-    if is_ha and ha_adapter:
-        # Route to Home Assistant service call
-        data = {"state": command}
-        if "brightness_pct" in body:
-            data["brightness_pct"] = int(body["brightness_pct"])
-        if "brightness" in body:
-            # HA brightness is 0-255; accept either raw or pct
-            data["brightness"] = int(body["brightness"])
-        if "color_temp" in body:
-            data["color_temp"] = int(body["color_temp"])
-        if "color_temp_kelvin" in body:
-            data["color_temp_kelvin"] = int(body["color_temp_kelvin"])
-        if "color" in body:
-            data["rgb_color"] = body["color"]
-        if "temperature" in body:
-            data["temperature"] = body["temperature"]
-        if "hvac_mode" in body:
-            data["hvac_mode"] = body["hvac_mode"]
-        result = await ha_adapter.call_service(name, data=data)
-        result["status"] = "ha_service_call"
-    elif is_zigbee and zigbee_adapter:
-        # Build SET payload from command
-        payload = {}
-        if command in {"ON", "OFF", "TOGGLE"}:
-            payload["state"] = command
-        if "brightness" in body:
-            payload["brightness"] = int(body["brightness"])
-        if "color_temp" in body:
-            payload["color_temp"] = int(body["color_temp"])
-        if "color" in body:
-            payload["color"] = body["color"]
-        ok = zigbee_adapter.publish_command(name, payload)
-        result = {"status": "zigbee_set", "ok": ok}
+    src = device.get("integration_source") or "mqtt"
+
+    if src in ("zigbee", "ha"):
+        # Route through IntegrationRegistry — adapter handles param translation
+        params = {k: v for k, v in body.items() if k != "command"}
+        result = await registry.send_command(device, command, params)
     else:
+        # MQTT path — use ExecutionEngine for full feature support
         if command not in {"ON", "OFF"}:
             raise HTTPException(status_code=400, detail="command must be ON or OFF")
         result = engine.execute_device_action(name, command, source="api")
@@ -323,19 +307,18 @@ async def zigbee_rename(name: str, body: dict):
     new_name = body.get("newName")
     if not new_name:
         raise HTTPException(400, "newName is required")
-        
+
     result = zigbee_adapter.rename_device(name, new_name)
-    
+
     # Update local storage explicitly
     devices = storage.get_all_devices()
     if name in devices:
-        # Re-register under new name and delete old
         device = devices[name]
         device["name"] = new_name
         device["topic_base"] = device["topic_base"].replace(name, new_name)
         storage.register_device(device)
         storage.delete_device(name)
-        
+
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return result
 
@@ -372,32 +355,32 @@ async def ha_diagnose():
     """Diagnostic endpoint to troubleshoot Home Assistant connectivity."""
     import socket
     import aiohttp
-    
+
     enabled = os.getenv("HA_ENABLED", "false").lower() == "true"
     ha_host = os.getenv("HA_HOST", "localhost")
     ha_port = int(os.getenv("HA_PORT", "8123"))
     ha_token = os.getenv("HA_TOKEN", "")
-    
+
     diagnostics = {
         "enabled": enabled,
         "config": {
             "host": ha_host,
             "port": ha_port,
-            "token_present": bool(ha_token and not ha_token.startswith("eyJ")),  # Check if it's not the example token
+            "token_present": bool(ha_token and not ha_token.startswith("eyJ")),
         },
         "checks": {}
     }
-    
+
     if not enabled:
         return {"status": "disabled", "diagnostics": diagnostics}
-    
+
     # Check 1: DNS resolution
     try:
         socket.gethostbyname(ha_host)
         diagnostics["checks"]["dns"] = {"status": "pass", "message": f"{ha_host} resolves"}
     except socket.gaierror as e:
         diagnostics["checks"]["dns"] = {"status": "fail", "message": f"Cannot resolve {ha_host}: {e}"}
-    
+
     # Check 2: TCP connectivity
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -410,15 +393,15 @@ async def ha_diagnose():
             diagnostics["checks"]["tcp"] = {"status": "fail", "message": f"Port {ha_port} is closed/unreachable"}
     except Exception as e:
         diagnostics["checks"]["tcp"] = {"status": "fail", "message": f"TCP check failed: {e}"}
-    
-    # Check 3: WebSocket connectivity (non-blocking)
+
+    # Check 3: WebSocket connectivity
     try:
         url = f"ws://{ha_host}:{ha_port}/api/websocket"
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
                 async with session.ws_connect(url) as ws:
-                    msg = await asyncio.wait_for(ws.receive(), timeout=5)
+                    await asyncio.wait_for(ws.receive(), timeout=5)
                     diagnostics["checks"]["websocket"] = {"status": "pass", "message": "WebSocket connects and receives"}
             except asyncio.TimeoutError:
                 diagnostics["checks"]["websocket"] = {"status": "fail", "message": "WebSocket timeout (HA might be down)"}
@@ -426,18 +409,16 @@ async def ha_diagnose():
                 diagnostics["checks"]["websocket"] = {"status": "fail", "message": f"WebSocket error: {type(e).__name__}"}
     except Exception as e:
         diagnostics["checks"]["websocket"] = {"status": "fail", "message": f"Cannot test WebSocket: {e}"}
-    
+
     # Check 4: Token presence
     if not ha_token or ha_token.startswith("eyJ"):
         diagnostics["checks"]["token"] = {"status": "fail", "message": "No valid token or using example token"}
     else:
         diagnostics["checks"]["token"] = {"status": "pass", "message": "Token is set"}
-    
-    # Current adapter status
+
     if ha_adapter:
-        status = ha_adapter.get_status()
-        diagnostics["adapter_status"] = status
-    
+        diagnostics["adapter_status"] = ha_adapter.get_status()
+
     return diagnostics
 
 
@@ -473,23 +454,17 @@ async def ha_call_service(body: dict):
     if not ha_adapter:
         raise HTTPException(503, "Home Assistant adapter not running")
 
-    domain     = body.get("domain")
-    service    = body.get("service")
-    entity_id  = body.get("entity_id", "")
-    data       = body.get("data", {})
+    domain    = body.get("domain")
+    service   = body.get("service")
+    entity_id = body.get("entity_id", "")
+    data      = body.get("data", {})
 
     if not domain or not service:
         raise HTTPException(400, "'domain' and 'service' are required")
 
-    result = await ha_adapter.call_service(
-        entity_id,
-        service=f"{service}",   # pass as-is; adapter sends to HA
-        data=data,
-    )
-    # Override domain in case it differs from entity domain
-    import json as _json
-    # Direct call to HA bypassing domain inference
+    result = {"ok": False, "error": "HA WebSocket not available"}
     if ha_adapter._connected and ha_adapter._ws:
+        import json as _json
         payload = {
             "id":           ha_adapter._next_id(),
             "type":         "call_service",
@@ -712,7 +687,7 @@ async def deploy_workflow(workflow_id: str):
     workflow = next((w for w in storage.get_workflows() if w.get("id") == workflow_id), None)
     if not workflow:
         raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
-        
+
     try:
         target_device, compiled_script = edge_compiler.compile(workflow)
     except ValueError as e:
@@ -724,9 +699,8 @@ async def deploy_workflow(workflow_id: str):
 
     topic = device_data["topic_base"] + "/script"
     ok = mqtt.publish(topic, compiled_script)
-    
+
     if ok:
-        # Save state to storage
         storage.update_workflow_deployed(workflow_id, target_device, True)
         storage.add_script_history(target_device, {
             "timestamp": __import__('datetime').datetime.now().isoformat(),
@@ -734,7 +708,7 @@ async def deploy_workflow(workflow_id: str):
             "description": f"[compiled] Workflow: {workflow.get('name')}"
         })
         storage.add_log("success", "api", f"Deployed workflow '{workflow.get('name')}' to {target_device}", {"workflow_id": workflow_id, "device": target_device})
-        
+
     return {"status": "deployed" if ok else "mqtt_failed", "workflow_id": workflow_id, "device": target_device}
 
 
@@ -757,10 +731,8 @@ async def delete_workflow(workflow_id: str):
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
-        # Send current state immediately on connect
         await websocket.send_json({"type": "state", "data": storage.get_all_devices()})
         while True:
-            # Keep connection alive; updates are pushed by broadcast
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -782,3 +754,108 @@ async def telegram_status():
 @app.get("/")
 async def root():
     return {"message": "iotClaw API is running", "docs": "/docs"}
+
+
+# ── Device Groups ─────────────────────────────────────────────────────────────
+
+@app.get("/groups")
+async def list_groups():
+    """Return all device groups with their member device names."""
+    return storage.get_all_groups()
+
+
+@app.post("/groups")
+async def create_group(body: dict):
+    """Create a new device group."""
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Group name is required.")
+    color = body.get("color", "#6b8cff")
+    icon  = body.get("icon", "⬡")
+    group = storage.create_group(name=name, color=color, icon=icon)
+    storage.add_log("success", "api", f"Created group: {name}", {"group_id": group["id"]})
+    return group
+
+
+@app.put("/groups/{group_id}")
+async def update_group(group_id: str, body: dict):
+    """Update a group's name, color, and/or icon."""
+    group = storage.update_group(
+        group_id,
+        name=body.get("name"),
+        color=body.get("color"),
+        icon=body.get("icon"),
+    )
+    if group is None:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found.")
+    return group
+
+
+@app.delete("/groups/{group_id}")
+async def delete_group(group_id: str):
+    """Delete a group (devices are NOT deleted, only the grouping)."""
+    ok = storage.delete_group(group_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found.")
+    storage.add_log("warning", "api", f"Deleted group: {group_id}", {"group_id": group_id})
+    return {"status": "deleted", "group_id": group_id}
+
+
+@app.post("/groups/{group_id}/devices")
+async def add_device_to_group(group_id: str, body: dict):
+    """Add a device to a group."""
+    device_name = (body.get("device_name") or "").strip()
+    if not device_name:
+        raise HTTPException(status_code=400, detail="device_name is required.")
+    ok = storage.add_device_to_group(group_id, device_name)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Group or device not found.")
+    return {"status": "added", "group_id": group_id, "device_name": device_name}
+
+
+@app.delete("/groups/{group_id}/devices/{device_name}")
+async def remove_device_from_group(group_id: str, device_name: str):
+    """Remove a device from a group."""
+    ok = storage.remove_device_from_group(group_id, device_name)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Membership not found.")
+    return {"status": "removed", "group_id": group_id, "device_name": device_name}
+
+
+@app.post("/groups/{group_id}/command")
+async def command_group(group_id: str, body: dict):
+    """Send a command to all devices in a group."""
+    command = str(body.get("command", "")).upper()
+    if command not in {"ON", "OFF"}:
+        raise HTTPException(status_code=400, detail="command must be ON or OFF")
+
+    groups = storage.get_all_groups()
+    group  = next((g for g in groups if g["id"] == group_id), None)
+    if group is None:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found.")
+
+    all_devices = storage.get_all_devices()
+    results = []
+    for device_name in group["devices"]:
+        device = all_devices.get(device_name)
+        if not device:
+            results.append({"device": device_name, "status": "not_found"})
+            continue
+        src = device.get("integration_source") or "mqtt"
+        try:
+            if src in ("zigbee", "ha"):
+                params = {k: v for k, v in body.items() if k != "command"}
+                result = await registry.send_command(device, command, params)
+            else:
+                result = engine.execute_device_action(device_name, command, source="group_api")
+            results.append({"device": device_name, "status": "sent", "result": result})
+        except Exception as e:
+            results.append({"device": device_name, "status": "error", "error": str(e)})
+
+    storage.add_log(
+        "info", "api",
+        f"Group command: {command} → {group['name']} ({len(group['devices'])} devices)",
+        {"group_id": group_id, "command": command},
+    )
+    await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
+    return {"status": "sent", "group_id": group_id, "command": command, "results": results}

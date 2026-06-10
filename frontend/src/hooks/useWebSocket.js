@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 export default function useWebSocket(url) {
   const [deviceStates, setDeviceStates] = useState({})
   const [isConnected, setIsConnected] = useState(false)
-  const [brokerConnected, setBrokerConnected] = useState(true)
+  const [brokerConnected, setBrokerConnected] = useState(false)
   const [lastMessage, setLastMessage] = useState(null)
   const [zigbeePairing, setZigbeePairing] = useState(null)
   const wsRef = useRef(null)

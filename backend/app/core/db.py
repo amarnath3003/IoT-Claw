@@ -36,9 +36,39 @@ def init_db():
             vendor TEXT,
             model TEXT,
             last_detection TEXT,
-            last_snapshot TEXT
+            last_snapshot TEXT,
+            integration_source TEXT DEFAULT 'mqtt'
         )
     ''')
+
+    # ── Schema migrations (safe on existing databases) ────────────────────────
+
+    # Add integration_source column to existing databases that predate it.
+    # SQLite does not support ADD COLUMN IF NOT EXISTS, so we catch the error.
+    try:
+        cursor.execute(
+            "ALTER TABLE devices ADD COLUMN integration_source TEXT DEFAULT 'mqtt'"
+        )
+        conn.commit()
+        print("[DB] Migration: added integration_source column")
+    except sqlite3.OperationalError:
+        pass  # Column already exists — nothing to do
+
+    # Backfill integration_source for devices registered before this migration.
+    # Priority: explicit zigbee flag > type prefix > default 'mqtt'.
+    cursor.execute("""
+        UPDATE devices
+        SET integration_source = 'zigbee'
+        WHERE zigbee = 1
+          AND (integration_source IS NULL OR integration_source = 'mqtt')
+    """)
+    cursor.execute("""
+        UPDATE devices
+        SET integration_source = 'ha'
+        WHERE type LIKE 'ha_%'
+          AND (integration_source IS NULL OR integration_source = 'mqtt')
+    """)
+    conn.commit()
 
     # Create telemetry table
     cursor.execute('''
@@ -103,6 +133,30 @@ def init_db():
         )
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_captures_device_ts ON captures(device_name, timestamp DESC)')
+
+    # Create groups table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS groups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            color TEXT DEFAULT '#6b8cff',
+            icon TEXT DEFAULT '⬡',
+            created_at DATETIME
+        )
+    ''')
+
+    # Create device_groups junction table (many devices ↔ many groups)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS device_groups (
+            device_name TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            PRIMARY KEY (device_name, group_id),
+            FOREIGN KEY(device_name) REFERENCES devices(name) ON DELETE CASCADE,
+            FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_device_groups_group ON device_groups(group_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_device_groups_device ON device_groups(device_name)')
 
     conn.commit()
     conn.close()

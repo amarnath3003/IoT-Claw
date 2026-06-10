@@ -19,8 +19,8 @@ export const registerDevice = (device) =>
 export const deleteDevice = (name) =>
   api.delete(`/devices/${encodeURIComponent(name)}`)
 
-export const commandDevice = (name, command) =>
-  api.post(`/devices/${encodeURIComponent(name)}/command`, { command })
+export const commandDevice = (name, command, params = {}) =>
+  api.post(`/devices/${encodeURIComponent(name)}/command`, { command, ...params })
 
 export const getDevicePreviewUrl = (name, cacheBuster = Date.now()) =>
   `${API_BASE}/devices/${encodeURIComponent(name)}/preview?t=${cacheBuster}`
@@ -90,7 +90,31 @@ export const haCallService = (domain, service, entityId = '', data = {}) =>
 export const haRefresh = () =>
   api.post('/ha/refresh')
 
+// haCommandDevice is superseded by commandDevice(name, command, extras)
 export const haCommandDevice = (name, command, extras = {}) =>
-  api.post(`/devices/${encodeURIComponent(name)}/command`, { command, ...extras })
+  commandDevice(name, command, extras)
+
+// ── Device Groups API ──────────────────────────────────────────────────────
+
+export const getGroups = () =>
+  api.get('/groups')
+
+export const createGroup = (name, color, icon) =>
+  api.post('/groups', { name, color, icon })
+
+export const updateGroup = (id, data) =>
+  api.put(`/groups/${id}`, data)
+
+export const deleteGroup = (id) =>
+  api.delete(`/groups/${id}`)
+
+export const addDeviceToGroup = (groupId, deviceName) =>
+  api.post(`/groups/${groupId}/devices`, { device_name: deviceName })
+
+export const removeDeviceFromGroup = (groupId, deviceName) =>
+  api.delete(`/groups/${groupId}/devices/${encodeURIComponent(deviceName)}`)
+
+export const commandGroup = (groupId, command) =>
+  api.post(`/groups/${groupId}/command`, { command })
 
 export default api

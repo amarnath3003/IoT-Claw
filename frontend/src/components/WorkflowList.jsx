@@ -1,58 +1,91 @@
 import { useState } from 'react'
+import { Play, Trash2, Zap, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-react'
 import { deleteWorkflow, runWorkflow, toggleWorkflow, deployWorkflowToEdge } from '../api'
 
-function summarizeTrigger(trigger = {}) {
-  if (trigger.type === 'chat')     return `Chat phrase: "${trigger.code || ''}"`
-  if (trigger.type === 'schedule') return `Daily at ${trigger.time || '--:--'}`
-  return `${trigger.device || 'device'} ${trigger.operator || '>'} ${trigger.value ?? 'value'}`
+const S = {
+  sans: '"Outfit", sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, monospace',
+  text1: 'rgba(255,255,255,0.82)',
+  text2: 'rgba(255,255,255,0.50)',
+  text3: 'rgba(255,255,255,0.25)',
+  border: 'rgba(255,255,255,0.07)',
 }
 
-const TRIGGER_ICON = { sensor: '◈', chat: '⌘', schedule: '⏱' }
-const ACTION_ICON  = { device: '⏻', brightness: '◑', camera_monitor: '⊙', log: '⊟' }
+function summarizeTrigger(t = {}) {
+  if (t.type === 'chat')         return `phrase: "${t.code || '?'}"`
+  if (t.type === 'schedule')     return `daily at ${t.time || '--:--'}`
+  if (t.type === 'device_event') return `${t.device || 'device'} ${t.event || 'offline'}`
+  return `${t.device || 'device'} ${t.operator || '>'} ${t.value ?? '?'}`
+}
+
+function summarizeActions(actions = []) {
+  if (!actions.length) return 'no actions'
+  if (actions.length === 1) {
+    const a = actions[0]
+    if (a.type === 'device')         return `${a.device || '?'} → ${a.command}`
+    if (a.type === 'brightness')     return `${a.device || '?'} → ${a.level}%`
+    if (a.type === 'camera_monitor') return `camera CV ${a.command}`
+    if (a.type === 'log')            return `log: "${(a.message || '').slice(0, 20)}"`
+    return a.type
+  }
+  return `${actions.length} actions`
+}
+
+const TRIGGER_ICON  = { sensor: '◈', chat: '⌘', schedule: '⏱', device_event: '⚡' }
+const ACTION_ICON   = { device: '⏻', brightness: '◑', camera_monitor: '⊙', log: '⊟' }
+
+const TRIG_COLOR = {
+  sensor:       { text: '#6b8cff', bg: 'rgba(26,46,255,0.07)', border: 'rgba(26,46,255,0.15)' },
+  chat:         { text: '#6b8cff', bg: 'rgba(26,46,255,0.07)', border: 'rgba(26,46,255,0.15)' },
+  schedule:     { text: '#6b8cff', bg: 'rgba(26,46,255,0.07)', border: 'rgba(26,46,255,0.15)' },
+  device_event: { text: '#6b8cff', bg: 'rgba(26,46,255,0.07)', border: 'rgba(26,46,255,0.15)' },
+}
 
 export default function WorkflowList({ workflows, onChanged }) {
-  const [runningId, setRunningId] = useState(null)
+  const [runningId,   setRunningId]   = useState(null)
   const [deployingId, setDeployingId] = useState(null)
 
   const handleDeploy = async (id, name) => {
     setDeployingId(id)
-    try { 
-      await deployWorkflowToEdge(id); 
-      alert(`Workflow "${name}" deployed to edge successfully!`);
-      onChanged?.() 
-    }
-    catch (e) { 
-      alert(`Deploy failed: ${e.response?.data?.detail || e.message}`); 
-      console.error('Failed to deploy workflow:', e) 
-    }
-    finally { setDeployingId(null) }
+    try {
+      await deployWorkflowToEdge(id)
+      alert(`Workflow "${name}" deployed to edge.`)
+      onChanged?.()
+    } catch (e) {
+      alert(`Deploy failed: ${e.response?.data?.detail || e.message}`)
+    } finally { setDeployingId(null) }
   }
 
   const handleDelete = async (id, name) => {
     if (!confirm(`Delete workflow "${name}"?`)) return
     try { await deleteWorkflow(id); onChanged?.() }
-    catch (e) { console.error('Failed to delete workflow:', e) }
+    catch (e) { console.error(e) }
   }
 
   const handleToggle = async (id) => {
     try { await toggleWorkflow(id); onChanged?.() }
-    catch (e) { console.error('Failed to toggle workflow:', e) }
+    catch (e) { console.error(e) }
   }
 
   const handleRun = async (id) => {
     setRunningId(id)
     try { await runWorkflow(id); onChanged?.() }
-    catch (e) { console.error('Failed to run workflow:', e) }
+    catch (e) { console.error(e) }
     finally { setRunningId(null) }
   }
 
   if (!workflows || workflows.length === 0) {
     return (
-      <div className="neu-section" style={{ padding: 48, textAlign: 'center' }}>
-        <div style={{ fontSize: 36, opacity: 0.2, marginBottom: 14 }}>⟳</div>
-        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--text-dim)' }}>No workflows saved yet</p>
-        <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-          Build one with the editor above, or ask Chat to create one.
+      <div style={{
+        padding: '40px 32px', textAlign: 'center',
+        background: 'rgba(255,255,255,0.02)', border: `1px solid ${S.border}`, borderRadius: 16,
+      }}>
+        <div style={{ fontSize: 28, opacity: 0.12, marginBottom: 12 }}>⟳</div>
+        <p style={{ margin: 0, fontFamily: S.sans, fontSize: 14, fontWeight: 600, color: S.text2 }}>
+          No workflows yet
+        </p>
+        <p style={{ margin: '6px 0 0', fontFamily: S.sans, fontSize: 12, color: S.text3 }}>
+          Build one above or ask the AI chat to create one.
         </p>
       </div>
     )
@@ -60,132 +93,172 @@ export default function WorkflowList({ workflows, onChanged }) {
 
   return (
     <div>
-      {/* header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      {/* List header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className="led-pulse" />
-          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: '#1a2eff', boxShadow: '0 0 6px rgba(26,46,255,0.6)',
+            animation: 'ledBlink 2s ease-in-out infinite',
+          }} />
+          <span style={{ fontFamily: S.sans, fontSize: 13, fontWeight: 600, color: S.text2 }}>
             Saved Workflows
-          </h3>
+          </span>
         </div>
-        <span className="neu-badge">{workflows.length} total</span>
+        <span style={{
+          fontFamily: S.mono, fontSize: 10, color: '#4d6aff',
+          background: 'rgba(26,46,255,0.08)', border: '1px solid rgba(26,46,255,0.18)',
+          padding: '2px 8px', borderRadius: 6,
+        }}>
+          {workflows.length}
+        </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
+      {/* Cards grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 10 }}>
         {workflows.map(wf => {
-          const actions    = wf.actions || (wf.action ? [wf.action] : [])
-          const trigType   = wf.trigger?.type || 'sensor'
-          const trigIcon   = TRIGGER_ICON[trigType] || '◈'
-          const isRunning  = runningId === wf.id
-          const lastRun    = wf.last_run
+          const actions   = wf.actions || (wf.action ? [wf.action] : [])
+          const trigType  = wf.trigger?.type || 'sensor'
+          const trigIcon  = TRIGGER_ICON[trigType] || '◈'
+          const tc        = TRIG_COLOR[trigType] || TRIG_COLOR.sensor
+          const isRunning = runningId === wf.id
+          const lastRun   = wf.last_run
             ? new Date(wf.last_run).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : 'Never'
 
           return (
-            <div key={wf.id} className="neu-plate" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div key={wf.id} style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: `1px solid ${wf.enabled ? S.border : 'rgba(255,255,255,0.04)'}`,
+              borderLeft: `3px solid ${wf.enabled ? tc.text : 'rgba(255,255,255,0.1)'}`,
+              borderRadius: 12,
+              overflow: 'hidden',
+              opacity: wf.enabled ? 1 : 0.6,
+              transition: 'opacity 0.2s',
+            }}>
 
-              {/* ── Title row ── */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <div className={wf.enabled ? 'led-pulse' : 'led'} />
-                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {wf.name}
-                    </h4>
-                  </div>
-                  {wf.description && (
-                    <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>{wf.description}</p>
-                  )}
+              {/* Title row */}
+              <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'flex-start', gap: 8, justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                  <div style={{
+                    width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                    background: wf.enabled ? '#1a2eff' : S.text3,
+                    boxShadow: wf.enabled ? '0 0 5px rgba(26,46,255,0.6)' : 'none',
+                  }} />
+                  <span style={{
+                    fontFamily: S.sans, fontSize: 14, fontWeight: 600, color: S.text1,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {wf.name}
+                  </span>
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                   {wf.deployed_to_edge && (
-                    <span className="neu-badge neu-badge-accent" title={`Deployed to ${wf.target_edge_device}`}>
-                      ⚡ EDGE
-                    </span>
+                    <span style={{
+                      fontFamily: S.mono, fontSize: 9, fontWeight: 600,
+                      color: '#4d6aff', background: 'rgba(26,46,255,0.1)',
+                      border: '1px solid rgba(26,46,255,0.2)', padding: '2px 6px', borderRadius: 5,
+                    }}>⚡ EDGE</span>
                   )}
-                  <span className="neu-badge neu-badge-accent" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                  <span style={{
+                    fontFamily: S.mono, fontSize: 9, fontWeight: 600,
+                    color: tc.text, background: tc.bg, border: `1px solid ${tc.border}`,
+                    padding: '2px 7px', borderRadius: 5,
+                  }}>
                     {trigIcon} {trigType.toUpperCase()}
                   </span>
-                  <span className={`neu-badge ${wf.enabled ? 'neu-badge-green' : ''}`}>
-                    {wf.enabled ? 'ON' : 'OFF'}
-                  </span>
                 </div>
               </div>
 
-              {/* ── Stats trough ── */}
-              <div className="neu-trough" style={{ padding: '10px 14px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-                {[
-                  { label: 'Actions', value: actions.length },
-                  { label: 'Runs',    value: wf.run_count || 0 },
-                  { label: 'Cooldown', value: `${wf.cooldown_seconds || 60}s` },
-                  { label: 'Last run', value: lastRun },
-                ].map(s => (
-                  <div key={s.label} style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-main)', fontFamily: 'JetBrains Mono, monospace' }}>{s.value}</div>
-                    <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+              {/* IF / THEN */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', margin: '0 14px 10px' }}>
+                <div style={{
+                  padding: '7px 9px', borderRadius: '8px 0 0 8px',
+                  background: tc.bg, border: `1px solid ${tc.border}`, borderRight: 'none',
+                }}>
+                  <div style={{ fontFamily: S.mono, fontSize: 8, fontWeight: 700, color: tc.text, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>IF</div>
+                  <div style={{ fontFamily: S.mono, fontSize: 10, color: S.text1, wordBreak: 'break-word', lineHeight: 1.35 }}>
+                    {summarizeTrigger(wf.trigger)}
                   </div>
-                ))}
+                </div>
+                <div style={{
+                  padding: '7px 9px', borderRadius: '0 8px 8px 0',
+                  background: 'rgba(26,46,255,0.05)', border: '1px solid rgba(26,46,255,0.13)',
+                }}>
+                  <div style={{ fontFamily: S.mono, fontSize: 8, fontWeight: 700, color: '#6b8cff', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>THEN</div>
+                  <div style={{ fontFamily: S.mono, fontSize: 10, color: S.text1, wordBreak: 'break-word', lineHeight: 1.35 }}>
+                    {summarizeActions(actions)}
+                  </div>
+                </div>
               </div>
 
-              {/* ── Trigger summary ── */}
-              <div className="neu-chunk" style={{ padding: '8px 12px' }}>
-                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Trigger: </span>
-                <span style={{ fontSize: 11, color: 'var(--text-main)', fontFamily: 'JetBrains Mono, monospace' }}>
-                  {summarizeTrigger(wf.trigger)}
-                </span>
-              </div>
-
-              {/* ── Actions list ── */}
-              {actions.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {/* Multiple action badges */}
+              {actions.length > 1 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '0 14px 10px' }}>
                   {actions.map((a, i) => (
-                    <span key={i} className="neu-badge" style={{ gap: 4 }}>
-                      <span>{ACTION_ICON[a.type] || '⬡'}</span>
-                      {a.type}{a.device ? ` → ${a.device}` : ''}
+                    <span key={i} style={{
+                      fontFamily: S.mono, fontSize: 9, fontWeight: 500,
+                      padding: '2px 7px', borderRadius: 5,
+                      background: 'rgba(26,46,255,0.06)', border: '1px solid rgba(26,46,255,0.15)', color: '#6b8cff',
+                    }}>
+                      {ACTION_ICON[a.type] || '⬡'} {a.type}{a.device ? ` → ${a.device}` : ''}
                     </span>
                   ))}
                 </div>
               )}
 
-              {/* ── Action buttons ── */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    id={`toggle-wf-${wf.id}`}
-                    onClick={() => handleToggle(wf.id)}
-                    className="neu-btn"
-                    style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600 }}
-                  >
-                    {wf.enabled ? 'Disable' : 'Enable'}
+              {/* Stats */}
+              <div style={{
+                display: 'flex', gap: 14, padding: '7px 14px',
+                borderTop: `1px solid ${S.border}`,
+                background: 'rgba(255,255,255,0.01)',
+                fontFamily: S.mono, fontSize: 10, color: S.text3,
+              }}>
+                <span>Runs <strong style={{ color: S.text2 }}>{wf.run_count || 0}</strong></span>
+                <span>Cooldown <strong style={{ color: S.text2 }}>{wf.cooldown_seconds || 60}s</strong></span>
+                <span>Last <strong style={{ color: S.text2 }}>{lastRun}</strong></span>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {/* Run — primary */}
+                  <button className="neu-btn-primary" onClick={() => handleRun(wf.id)} disabled={isRunning}
+                    style={{ flex: 1, justifyContent: 'center', gap: 5, padding: '7px 0', fontSize: 12 }}>
+                    {isRunning
+                      ? <><RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> Running…</>
+                      : <><Play size={11} /> Run</>
+                    }
                   </button>
-                  <button
-                    id={`run-wf-${wf.id}`}
-                    onClick={() => handleRun(wf.id)}
-                    disabled={isRunning}
-                    className="neu-btn-primary"
-                    style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 600 }}
-                  >
-                    {isRunning ? '⟳ Running…' : '▶ Run'}
+
+                  {/* Pause / Enable — ghost */}
+                  <button className="neu-btn" onClick={() => handleToggle(wf.id)}
+                    style={{
+                      flex: 1, justifyContent: 'center', gap: 5, padding: '7px 0', fontSize: 12,
+                      color: wf.enabled ? 'rgba(255,255,255,0.40)' : '#6b8cff',
+                      borderColor: wf.enabled ? 'rgba(255,255,255,0.10)' : 'rgba(26,46,255,0.25)',
+                      background: wf.enabled ? 'rgba(255,255,255,0.03)' : 'rgba(26,46,255,0.07)',
+                    }}>
+                    {wf.enabled
+                      ? <><ToggleLeft size={12} /> Pause</>
+                      : <><ToggleRight size={12} /> Enable</>
+                    }
                   </button>
-                  <button
-                    id={`delete-wf-${wf.id}`}
-                    onClick={() => handleDelete(wf.id, wf.name)}
-                    className="neu-btn-danger neu-btn-sm"
-                    title="Delete workflow"
-                    style={{ fontSize: 14 }}
-                  >
-                    ✕
+
+                  {/* Delete */}
+                  <button className="neu-btn-danger" onClick={() => handleDelete(wf.id, wf.name)} title="Delete"
+                    style={{ padding: '7px 10px', fontSize: 12 }}>
+                    <Trash2 size={12} />
                   </button>
                 </div>
+
+                {/* Deploy */}
                 {trigType === 'sensor' && (
-                  <button
-                    id={`deploy-wf-${wf.id}`}
-                    onClick={() => handleDeploy(wf.id, wf.name)}
+                  <button className="neu-btn" onClick={() => handleDeploy(wf.id, wf.name)}
                     disabled={deployingId === wf.id}
-                    className="neu-btn"
-                    style={{ padding: '8px 0', fontSize: 12, fontWeight: 600, border: '1px solid rgba(26, 77, 255, 0.5)' }}
-                  >
-                    {deployingId === wf.id ? '⚡ Deploying…' : '⚡ Deploy to Edge'}
+                    style={{ width: '100%', justifyContent: 'center', gap: 5, fontSize: 12, color: '#4d6aff', borderColor: 'rgba(26,46,255,0.25)', background: 'rgba(26,46,255,0.06)' }}>
+                    <Zap size={11} />
+                    {deployingId === wf.id ? 'Deploying…' : 'Deploy to Edge'}
                   </button>
                 )}
               </div>

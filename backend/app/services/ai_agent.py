@@ -36,7 +36,7 @@ SYSTEM_PROMPT = """You are iotClaw — a highly intelligent IoT automation assis
 - "good night" → infer night mode: turn off all devices or activate a night mode workflow
 - "morning routine" → trigger any schedule/chat workflow named morning, or turn on relevant devices
 - "status of everything" → list_devices() then summarize clearly
-- "dim the lights to 40%" → set_device_brightness(light, 40)
+- "dim the lights to 40%" → control_device(light, ON, brightness_pct=40)
 - "is the light on?" → read_sensor(light_device), report status conversationally
 - "schedule fan to turn on at 8am" → create_workflow(schedule trigger 08:00, device ON)
 
@@ -46,6 +46,22 @@ SYSTEM_PROMPT = """You are iotClaw — a highly intelligent IoT automation assis
 - "cam" / "camera" / "eye" → laptop_security_camera
 - If multiple matches, pick the one in context (e.g. "living room light" → living_room_*)
 - Never fail if you can make a reasonable inference
+
+=== UNIFIED control_device TOOL ===
+control_device works for ALL device types — MQTT, Zigbee, and Home Assistant.
+It automatically routes to the correct protocol based on the device's integration.
+
+For MQTT devices: ON/OFF only (no extra params needed)
+For Zigbee lights/plugs:
+  - brightness (1-254), color_temp (150-500 Mireds), color {"r":255,"g":100,"b":0}
+  - effect: "blink" | "breathe" | "colorloop" | "finish_effect"
+  - transition (seconds)
+  - Color mapping: "warm white" → color_temp=370, "cool white" → color_temp=153
+  - Brightness: "dim" → brightness=50, "half" → brightness=127, "full/max" → brightness=254
+For Home Assistant entities:
+  - brightness_pct (0-100), color_temp_kelvin (2700=warm, 6500=cool), rgb_color [r,g,b]
+  - temperature (number, for climate), hvac_mode (cool/heat/off/auto/heat_cool)
+  - media_content_id (for media_player)
 
 === WORKFLOW INTELLIGENCE ===
 - Trigger types: sensor (threshold), chat (secret phrase), schedule (daily HH:MM), device_event (offline/online)
@@ -73,35 +89,26 @@ Some devices are MicroPython edge agents (type: micropython_edge_agent). These s
 - Prefer push_script over control_device for complex automations on edge devices.
 - After pushing, confirm what logic the device will run locally.
 
-=== ZIGBEE DEVICE INTELLIGENCE ===
-Zigbee devices are auto-discovered from Zigbee2MQTT. They appear exactly like ESP32 devices.
-- For lights: use zigbee_set (not control_device) to get full brightness/color control
-- For sensors: use zigbee_read_sensor for fresh readings
+=== ZIGBEE MANAGEMENT ===
+Zigbee devices are auto-discovered from Zigbee2MQTT. Use control_device for all on/off/brightness/color commands.
 - For pairing:
   → "pair", "add a new device", "put in pairing mode" → zigbee_permit_join(enable=true, duration=120)
   → Tell user to power on device within 2 minutes
   → "stop pairing", "close pairing", "done pairing" → zigbee_permit_join(enable=false)
 - For removal: "remove [device]", "unpair [device]" → zigbee_remove_device(device_name)
-- Color mapping: "warm white" → color_temp=370, "cool white" → color_temp=153, "daylight" → color_temp=200
-- Brightness: "dim" → brightness=50, "half" → brightness=127, "full/max" → brightness=254
-- "Breathe" / "pulse" / "colorloop" → use effect parameter
 - For groups: "all bedroom lights" → zigbee_group_set(group_name="bedroom", ...)
 
-=== TONE ===
-Be concise, friendly, and confident. Confirm what you did in 1-2 sentences. Use emojis sparingly for warmth.
-
 === HOME ASSISTANT DEVICE INTELLIGENCE ===
-Home Assistant entities appear as ha_* type devices (ha_entity=True in the device record).
-They are named with dot notation: e.g. "light.kitchen_ceiling", "switch.bedroom_fan", "climate.living_room".
-- For lights: use ha_control with brightness_pct (0-100) and/or color_temp_kelvin. Never use raw brightness (0-255) with ha_control.
-- For thermostats/climate: use ha_control with temperature (number) and hvac_mode (cool/heat/off/auto/heat_cool)
-- For covers/blinds: ha_control action=on → opens, action=off → closes
-- For locks: ha_control action=on → unlocks, action=off → locks
+Home Assistant entities appear as ha_* type devices. They are named with dot notation:
+e.g. "light.kitchen_ceiling", "switch.bedroom_fan", "climate.living_room".
+- Use control_device for all basic on/off/brightness/color/temperature commands
 - For scenes: use ha_call_service(domain="scene", service="turn_on", entity_id="scene.movie_night", data={})
 - For scripts: use ha_call_service(domain="script", service="turn_on", entity_id="script.good_morning", data={})
 - "movie mode", "good night", "morning routine" → look for matching HA scene/script names first
 - Use ha_list_entities to discover what HA entities exist before controlling by guessed name
-- HA entities support all workflow triggers — a sensor threshold on "sensor.bedroom_temperature" works exactly like an ESP32 sensor"""
+
+=== TONE ===
+Be concise, friendly, and confident. Confirm what you did in 1-2 sentences. Use emojis sparingly for warmth."""
 
 COMPACT_SYSTEM_PROMPT = """You are iotClaw — an IoT automation assistant.
 
@@ -116,11 +123,7 @@ COMPACT_SYSTEM_PROMPT = """You are iotClaw — an IoT automation assistant.
 - "blink the LED 3 times" -> blink_device(led_device, times=3)
 - "what devices do I have?" -> list_devices()
 - "read temp sensor" -> read_sensor(temperature_device)
-
-=== DEVICE MATCHING ===
-- "light" / "LED" -> any switch or dimmable switch
-- "fan" -> device with "fan" in name
-- "camera" -> laptop_security_camera
+- "dim kitchen light to 60%" -> control_device(light.kitchen, ON, brightness_pct=60)
 """
 
 BIG_TASK_KEYWORDS = {
@@ -154,12 +157,29 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "control_device",
-            "description": "Turn a device ON or OFF. Use for any on/off/toggle request.",
+            "description": (
+                "Control any device — MQTT switch/sensor, Zigbee light/plug, or Home Assistant entity. "
+                "Automatically routes to the correct protocol. "
+                "Use for all on/off/toggle and brightness/color commands.\n"
+                "For Zigbee: brightness (1-254), color_temp (150-500 Mireds), color {r,g,b}, effect, transition.\n"
+                "For HA: brightness_pct (0-100), color_temp_kelvin, rgb_color [r,g,b], temperature, hvac_mode."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "device_name": {"type": "string", "description": "Registered device name (snake_case)"},
-                    "action": {"type": "string", "enum": ["ON", "OFF"]}
+                    "device_name":        {"type": "string", "description": "Registered device name or HA entity ID"},
+                    "action":             {"type": "string", "enum": ["ON", "OFF", "TOGGLE"]},
+                    "brightness":         {"type": "integer", "minimum": 1, "maximum": 254, "description": "Zigbee brightness 1-254"},
+                    "brightness_pct":     {"type": "integer", "minimum": 0, "maximum": 100, "description": "HA light brightness 0-100%"},
+                    "color_temp":         {"type": "integer", "minimum": 150, "maximum": 500, "description": "Zigbee color temperature in Mireds"},
+                    "color_temp_kelvin":  {"type": "integer", "description": "HA color temperature in Kelvin (2700=warm, 6500=cool)"},
+                    "color":              {"type": "object", "description": "Zigbee RGB color as {\"r\":255,\"g\":100,\"b\":0}"},
+                    "rgb_color":          {"type": "array", "items": {"type": "integer"}, "description": "HA RGB color as [r,g,b]"},
+                    "effect":             {"type": "string", "enum": ["blink", "breathe", "okay", "channel_change", "colorloop", "finish_effect", "stop_effect"], "description": "Zigbee lighting effect"},
+                    "transition":         {"type": "number", "description": "Transition time in seconds (Zigbee)"},
+                    "temperature":        {"type": "number", "description": "Target temperature for HA climate devices"},
+                    "hvac_mode":          {"type": "string", "enum": ["cool", "heat", "off", "auto", "heat_cool", "fan_only", "dry"], "description": "HA HVAC mode"},
+                    "media_content_id":   {"type": "string", "description": "Media content ID for HA media_player"}
                 },
                 "required": ["device_name", "action"]
             }
@@ -174,8 +194,8 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "device_name": {"type": "string", "description": "Device to blink"},
-                    "times": {"type": "integer", "description": "Number of blink cycles (default 3)", "default": 3},
-                    "on_seconds": {"type": "number", "description": "Seconds ON per cycle (default 0.5)", "default": 0.5},
+                    "times":       {"type": "integer", "description": "Number of blink cycles (default 3)", "default": 3},
+                    "on_seconds":  {"type": "number", "description": "Seconds ON per cycle (default 0.5)", "default": 0.5},
                     "off_seconds": {"type": "number", "description": "Seconds OFF per cycle (default 0.5)", "default": 0.5}
                 },
                 "required": ["device_name"]
@@ -196,10 +216,10 @@ TOOLS = [
                         "items": {
                             "type": "object",
                             "properties": {
-                                "type": {"type": "string", "enum": ["device", "delay"], "description": "'device' to control a device, 'delay' to wait"},
-                                "device_name": {"type": "string", "description": "Device name (for device steps)"},
-                                "action": {"type": "string", "enum": ["ON", "OFF"], "description": "Action (for device steps)"},
-                                "seconds": {"type": "number", "description": "Seconds to wait (for delay steps)"}
+                                "type":        {"type": "string", "enum": ["device", "delay"]},
+                                "device_name": {"type": "string"},
+                                "action":      {"type": "string", "enum": ["ON", "OFF"]},
+                                "seconds":     {"type": "number"}
                             }
                         }
                     },
@@ -213,12 +233,12 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "set_device_brightness",
-            "description": "Set brightness/level of a dimmable device (0-100). Use for 'dim', 'brighten', 'set level', '50%' etc.",
+            "description": "Set brightness/level of a dimmable MQTT device (0-100%). For Zigbee or HA lights, use control_device with brightness or brightness_pct instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "device_name": {"type": "string"},
-                    "level": {"type": "integer", "minimum": 0, "maximum": 100}
+                    "level":       {"type": "integer", "minimum": 0, "maximum": 100}
                 },
                 "required": ["device_name", "level"]
             }
@@ -228,7 +248,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "read_sensor",
-            "description": "Read the current value/status of a device or sensor.",
+            "description": "Read the current value/status of any device or sensor — MQTT, Zigbee, or Home Assistant.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -254,11 +274,11 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Unique snake_case device name"},
-                    "topic_base": {"type": "string", "description": "MQTT topic base e.g. home/room/device"},
-                    "type": {"type": "string", "enum": ["switch", "sensor", "dimmable_switch", "security_camera", "generic"]},
-                    "unit": {"type": "string", "description": "Unit for sensor (e.g. °C, %, lux)"},
-                    "location": {"type": "string", "description": "Room or location name"},
+                    "name":        {"type": "string", "description": "Unique snake_case device name"},
+                    "topic_base":  {"type": "string", "description": "MQTT topic base e.g. home/room/device"},
+                    "type":        {"type": "string", "enum": ["switch", "sensor", "dimmable_switch", "security_camera", "generic"]},
+                    "unit":        {"type": "string", "description": "Unit for sensor (e.g. °C, %, lux)"},
+                    "location":    {"type": "string", "description": "Room or location name"},
                     "description": {"type": "string", "description": "Short description of the device"}
                 },
                 "required": ["name", "topic_base", "type"]
@@ -292,18 +312,18 @@ Actions: device (ON/OFF), brightness, camera_monitor, log.""",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string"},
+                    "name":        {"type": "string"},
                     "description": {"type": "string"},
                     "trigger": {
                         "type": "object",
                         "properties": {
-                            "type": {"type": "string", "enum": ["sensor", "chat", "schedule", "device_event"]},
-                            "device": {"type": "string"},
+                            "type":     {"type": "string", "enum": ["sensor", "chat", "schedule", "device_event"]},
+                            "device":   {"type": "string"},
                             "operator": {"type": "string", "enum": [">", "<", ">=", "<=", "==", "!="]},
-                            "value": {"type": "string"},
-                            "code": {"type": "string"},
-                            "time": {"type": "string", "description": "HH:MM"},
-                            "event": {"type": "string", "enum": ["offline", "online"], "description": "For device_event trigger: which event to react to"}
+                            "value":    {"type": "string"},
+                            "code":     {"type": "string"},
+                            "time":     {"type": "string", "description": "HH:MM"},
+                            "event":    {"type": "string", "enum": ["offline", "online"]}
                         },
                         "required": ["type"]
                     },
@@ -312,17 +332,17 @@ Actions: device (ON/OFF), brightness, camera_monitor, log.""",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "type": {"type": "string", "enum": ["device", "brightness", "camera_monitor", "log"]},
-                                "device": {"type": "string"},
+                                "type":    {"type": "string", "enum": ["device", "brightness", "camera_monitor", "log"]},
+                                "device":  {"type": "string"},
                                 "command": {"type": "string", "enum": ["ON", "OFF"]},
-                                "level": {"type": "integer"},
+                                "level":   {"type": "integer"},
                                 "message": {"type": "string"}
                             },
                             "required": ["type"]
                         }
                     },
                     "cooldown_seconds": {"type": "integer", "description": "Default 60"},
-                    "enabled": {"type": "boolean"}
+                    "enabled":          {"type": "boolean"}
                 },
                 "required": ["name", "trigger", "actions"]
             }
@@ -394,7 +414,7 @@ Only use on devices with type 'micropython_edge_agent'.""",
                     "device_name": {"type": "string", "description": "Target edge device name"},
                     "script": {
                         "type": "string",
-                        "description": "Valid MicroPython code. For repeating logic define a loop() function. Example: 'from machine import Pin\\nled=Pin(2,Pin.OUT)\\ndef loop():\\n  led.toggle()'"
+                        "description": "Valid MicroPython code. For repeating logic define a loop() function."
                     },
                     "description": {"type": "string", "description": "Human-readable description of what the script does"}
                 },
@@ -406,12 +426,12 @@ Only use on devices with type 'micropython_edge_agent'.""",
         "type": "function",
         "function": {
             "name": "push_script_group",
-            "description": "Push the same MicroPython script to ALL edge devices in a given location simultaneously. Use for synchronized effects: room-wide lighting patterns, coordinated sensor polling, etc. Pass an empty string for location to target all edge devices.",
+            "description": "Push the same MicroPython script to ALL edge devices in a given location simultaneously. Pass an empty string for location to target all edge devices.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "location": {"type": "string", "description": "Room/location name to target (e.g. 'living_room'). Empty string = all edge devices."},
-                    "script": {"type": "string", "description": "Valid MicroPython code to push to all matched devices."},
+                    "location":    {"type": "string", "description": "Room/location name to target. Empty string = all edge devices."},
+                    "script":      {"type": "string", "description": "Valid MicroPython code to push to all matched devices."},
                     "description": {"type": "string", "description": "Human-readable description of what the script does"}
                 },
                 "required": ["location", "script", "description"]
@@ -427,7 +447,7 @@ Only use on devices with type 'micropython_edge_agent'.""",
                 "type": "object",
                 "properties": {
                     "device_name": {"type": "string"},
-                    "version": {"type": "integer", "description": "History index: 0 = last pushed, 1 = second-last, etc. (default 1 to undo the latest)", "default": 1}
+                    "version":     {"type": "integer", "description": "History index: 0=last pushed, 1=second-last, etc. (default 1)", "default": 1}
                 },
                 "required": ["device_name"]
             }
@@ -471,33 +491,14 @@ Always call get_device_capabilities first to discover the device's tools.""",
                 "type": "object",
                 "properties": {
                     "device_name": {"type": "string", "description": "Target edge device name"},
-                    "tool_name": {"type": "string", "description": "MCP tool name, e.g. set_led, set_pin, read_adc"},
-                    "arguments": {"type": "object", "description": "Tool arguments as a JSON object, e.g. {\"pin\": 5, \"state\": \"ON\"}"}
+                    "tool_name":   {"type": "string", "description": "MCP tool name, e.g. set_led, set_pin, read_adc"},
+                    "arguments":   {"type": "object", "description": "Tool arguments as a JSON object"}
                 },
                 "required": ["device_name", "tool_name"]
             }
         }
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "zigbee_set",
-            "description": "Send a Zigbee SET command to a device. Use for:\n- Color lights: set brightness, RGB color, color temperature, effects\n- Sensors: read-only, no SET needed\n- Plugs: ON/OFF with power monitoring\n- Groups: control all devices in a room at once\nAlways prefer this over control_device for Zigbee light devices when color/brightness is needed.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "device_name": {"type": "string", "description": "Friendly name of the Zigbee device"},
-                    "state":       {"type": "string", "enum": ["ON", "OFF", "TOGGLE"], "description": "Power state"},
-                    "brightness":  {"type": "integer", "minimum": 1, "maximum": 254, "description": "Brightness 1-254"},
-                    "color_temp":  {"type": "integer", "minimum": 150, "maximum": 500, "description": "Color temperature in Mireds. 150=cool/daylight, 370=warm/candle"},
-                    "color":       {"type": "object", "description": "RGB color. {\"r\":255,\"g\":100,\"b\":0} for orange"},
-                    "effect":      {"type": "string", "enum": ["blink", "breathe", "okay", "channel_change", "colorloop", "finish_effect", "stop_effect"], "description": "Lighting effect"},
-                    "transition":  {"type": "number", "description": "Transition time in seconds (default 0)"}
-                },
-                "required": ["device_name"]
-            }
-        }
-    },
+    # ── Zigbee management (pairing, removal, groups) ─────────────────────────
     {
         "type": "function",
         "function": {
@@ -536,58 +537,18 @@ Always call get_device_capabilities first to discover the device's tools.""",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "group_name":  {"type": "string", "description": "Group friendly name (e.g. 'bedroom', 'living_room')"},
-                    "state":       {"type": "string", "enum": ["ON", "OFF", "TOGGLE"]},
-                    "brightness":  {"type": "integer", "minimum": 1, "maximum": 254},
-                    "color_temp":  {"type": "integer", "minimum": 150, "maximum": 500},
-                    "color":       {"type": "object"},
-                    "effect":      {"type": "string"}
+                    "group_name": {"type": "string", "description": "Group friendly name (e.g. 'bedroom', 'living_room')"},
+                    "state":      {"type": "string", "enum": ["ON", "OFF", "TOGGLE"]},
+                    "brightness": {"type": "integer", "minimum": 1, "maximum": 254},
+                    "color_temp": {"type": "integer", "minimum": 150, "maximum": 500},
+                    "color":      {"type": "object"},
+                    "effect":     {"type": "string"}
                 },
                 "required": ["group_name"]
             }
         }
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "zigbee_read_sensor",
-            "description": "Read the latest value from a Zigbee sensor (temperature, humidity, motion, contact, power). Returns current status.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "device_name": {"type": "string"}
-                },
-                "required": ["device_name"]
-            }
-        }
-    },
-    # ── Home Assistant Tools ───────────────────────────────────────────────
-    {
-        "type": "function",
-        "function": {
-            "name": "ha_control",
-            "description": """Control a Home Assistant entity. Use for any HA light, switch, lock, fan, climate device, media player, cover, etc.
-Examples:
-- Turn on kitchen light at 80%: ha_control(entity_id='light.kitchen', action='on', brightness_pct=80)
-- Set thermostat to 22°C heat: ha_control(entity_id='climate.living_room', action='on', temperature=22, hvac_mode='heat')
-- Lock front door: ha_control(entity_id='lock.front_door', action='off')
-- Open blinds: ha_control(entity_id='cover.bedroom_blinds', action='on')""",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "entity_id": {"type": "string", "description": "Full HA entity ID e.g. 'light.kitchen_ceiling'"},
-                    "action": {"type": "string", "enum": ["on", "off", "toggle"], "description": "on=turn_on, off=turn_off"},
-                    "brightness_pct": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Light brightness 0-100%"},
-                    "color_temp_kelvin": {"type": "integer", "description": "Color temperature in Kelvin (2700=warm, 6500=cool)"},
-                    "rgb_color": {"type": "array", "items": {"type": "integer"}, "description": "RGB color as [r, g, b] e.g. [255, 100, 0]"},
-                    "temperature": {"type": "number", "description": "Target temperature for climate devices"},
-                    "hvac_mode": {"type": "string", "enum": ["cool", "heat", "off", "auto", "heat_cool", "fan_only", "dry"], "description": "HVAC mode for climate devices"},
-                    "media_content_id": {"type": "string", "description": "Media content ID for media_player entities"}
-                },
-                "required": ["entity_id", "action"]
-            }
-        }
-    },
+    # ── Home Assistant advanced tools ─────────────────────────────────────────
     {
         "type": "function",
         "function": {
@@ -596,7 +557,7 @@ Examples:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "domain": {"type": "string", "description": "Optional HA domain to filter by. e.g. 'light', 'switch', 'sensor', 'climate', 'lock', 'cover', 'media_player'. Leave empty for all."}
+                    "domain": {"type": "string", "description": "Optional HA domain to filter by: 'light', 'switch', 'sensor', 'climate', 'lock', 'cover', 'media_player'. Leave empty for all."}
                 }
             }
         }
@@ -605,14 +566,14 @@ Examples:
         "type": "function",
         "function": {
             "name": "ha_call_service",
-            "description": "Call any Home Assistant service directly. Use for scenes, scripts, or advanced control not covered by ha_control.",
+            "description": "Call any Home Assistant service directly. Use for scenes, scripts, or advanced control not covered by control_device.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "domain": {"type": "string", "description": "HA domain e.g. 'scene', 'script', 'homeassistant', 'notify'"},
-                    "service": {"type": "string", "description": "Service name e.g. 'turn_on', 'turn_off', 'reload'"},
+                    "domain":    {"type": "string", "description": "HA domain e.g. 'scene', 'script', 'homeassistant', 'notify'"},
+                    "service":   {"type": "string", "description": "Service name e.g. 'turn_on', 'turn_off', 'reload'"},
                     "entity_id": {"type": "string", "description": "Target entity ID (optional for some services)"},
-                    "data": {"type": "object", "description": "Additional service data as JSON object"}
+                    "data":      {"type": "object", "description": "Additional service data as JSON object"}
                 },
                 "required": ["domain", "service"]
             }
@@ -622,30 +583,30 @@ Examples:
 
 
 # ── Tool subsets for selective injection ──────────────────────────────────────
-_TOOL_NAMES_BASIC    = {"control_device","blink_device","sequence_actions","set_device_brightness","read_sensor","list_devices","get_logs"}
-_TOOL_NAMES_MGMT     = {"register_device","delete_device"}
-_TOOL_NAMES_WORKFLOW = {"create_workflow","list_workflows","toggle_workflow","delete_workflow","execute_workflow"}
-_TOOL_NAMES_EDGE     = {"push_script","push_script_group","rollback_script","get_device_capabilities","call_hardware_tool"}
-_TOOL_NAMES_ZIGBEE   = {"zigbee_set","zigbee_permit_join","zigbee_remove_device","zigbee_group_set","zigbee_read_sensor"}
-_TOOL_NAMES_HA       = {"ha_control","ha_list_entities","ha_call_service"}
+_TOOL_NAMES_BASIC    = {"control_device", "blink_device", "sequence_actions", "set_device_brightness", "read_sensor", "list_devices", "get_logs"}
+_TOOL_NAMES_MGMT     = {"register_device", "delete_device"}
+_TOOL_NAMES_WORKFLOW = {"create_workflow", "list_workflows", "toggle_workflow", "delete_workflow", "execute_workflow"}
+_TOOL_NAMES_EDGE     = {"push_script", "push_script_group", "rollback_script", "get_device_capabilities", "call_hardware_tool"}
+_TOOL_NAMES_ZIGBEE   = {"zigbee_permit_join", "zigbee_remove_device", "zigbee_group_set"}
+_TOOL_NAMES_HA       = {"ha_list_entities", "ha_call_service"}
 
 _TOOLS_BY_NAME = {t["function"]["name"]: t for t in TOOLS}
+
 
 def _select_tools(message: str) -> list:
     """Return minimal tool subset needed for this message. Reduces input tokens → faster TTFT."""
     msg = message.lower()
     names = set(_TOOL_NAMES_BASIC)
-    if any(k in msg for k in {"register","add device","new device","delete device","remove device"}):
+    if any(k in msg for k in {"register", "add device", "new device", "delete device", "remove device"}):
         names |= _TOOL_NAMES_MGMT
-    if any(k in msg for k in {"workflow","automation","trigger","schedule","when ","if temp","secret code","if motion"}):
+    if any(k in msg for k in {"workflow", "automation", "trigger", "schedule", "when ", "if temp", "secret code", "if motion"}):
         names |= _TOOL_NAMES_WORKFLOW
-    if any(k in msg for k in {"esp32","micropython","script","firmware","push script","edge","pin ","adc","rollback"}):
+    if any(k in msg for k in {"esp32", "micropython", "script", "firmware", "push script", "edge", "pin ", "adc", "rollback"}):
         names |= _TOOL_NAMES_EDGE
-    if any(k in msg for k in {"zigbee","pair","pairing","z2m","colorloop","breathe","color temp"}):
+    if any(k in msg for k in {"zigbee", "pair", "pairing", "z2m", "colorloop", "breathe", "color temp"}):
         names |= _TOOL_NAMES_ZIGBEE
-    if any(k in msg for k in {"home assistant","ha_","entity","climate","thermostat","scene","hvac","blind","cover"}):
+    if any(k in msg for k in {"home assistant", "ha_", "entity", "climate", "thermostat", "scene", "hvac", "blind", "cover"}):
         names |= _TOOL_NAMES_HA
-    # Big/ambiguous tasks get full tool set for safety
     if _is_big_task(message):
         return TOOLS
     return [_TOOLS_BY_NAME[n] for n in names if n in _TOOLS_BY_NAME]
@@ -670,15 +631,12 @@ def _fuzzy_match(name: str, devices: dict) -> str | None:
     if name in devices:
         return name
     name_l = name.lower().replace(" ", "_")
-    # Exact key match ignoring case
     for k in devices:
         if k.lower() == name_l:
             return k
-    # Substring match
     candidates = [k for k in devices if name_l in k.lower() or k.lower() in name_l]
     if len(candidates) == 1:
         return candidates[0]
-    # Word overlap
     words = set(name_l.replace("_", " ").split())
     scored = []
     for k in devices:
@@ -691,20 +649,67 @@ def _fuzzy_match(name: str, devices: dict) -> str | None:
     return None
 
 
-def build_tool_dispatch(mqtt, storage, engine=None):
+def build_tool_dispatch(mqtt, storage, engine=None, registry=None):
 
     def _resolve(device_name: str) -> tuple[str | None, dict]:
         devices = storage.get_all_devices()
         matched = _fuzzy_match(device_name, devices)
         return matched, devices
 
-    def control_device(device_name: str, action: str) -> dict:
+    # ── Unified control_device ────────────────────────────────────────────────
+
+    async def control_device(
+        device_name: str,
+        action: str,
+        # Zigbee params
+        brightness: int = None,
+        color_temp: int = None,
+        color: dict = None,
+        effect: str = None,
+        transition: float = None,
+        # HA params
+        brightness_pct: int = None,
+        color_temp_kelvin: int = None,
+        rgb_color: list = None,
+        temperature: float = None,
+        hvac_mode: str = None,
+        media_content_id: str = None,
+    ) -> dict:
+        """Route a device command to MQTT, Zigbee, or HA — based on integration_source."""
         matched, devices = _resolve(device_name)
         if not matched:
             return {"error": f"Device '{device_name}' not found.", "known_devices": list(devices.keys())}
+
+        device = devices[matched]
+        src = device.get("integration_source", "mqtt")
+
+        if src in ("zigbee", "ha") and registry:
+            # Build params dict (exclude None values)
+            params = {k: v for k, v in {
+                "brightness":        brightness,
+                "color_temp":        color_temp,
+                "color":             color,
+                "effect":            effect,
+                "transition":        transition,
+                "brightness_pct":    brightness_pct,
+                "color_temp_kelvin": color_temp_kelvin,
+                "rgb_color":         rgb_color,
+                "temperature":       temperature,
+                "hvac_mode":         hvac_mode,
+                "media_content_id":  media_content_id,
+            }.items() if v is not None}
+            result = await registry.send_command(device, action.upper(), params)
+            storage.add_log(
+                "success" if result.get("ok") else "error", "ai",
+                f"AI {src.upper()} control: {matched} → {action.upper()}",
+                {"device": matched, "src": src, "action": action, **params}
+            )
+            return result
+
+        # ── MQTT / legacy path ─────────────────────────────────────────────
         if engine:
             result = engine.execute_device_action(matched, action, source="ai")
-            if result.get("error"):
+            if result and result.get("error"):
                 return result
             return {"status": "success", "device": matched, "action": action}
         topic = devices[matched]["topic_base"] + "/set"
@@ -714,6 +719,8 @@ def build_tool_dispatch(mqtt, storage, engine=None):
             storage.add_log("success", "ai", f"AI turned {action} → {matched}", {"device": matched, "action": action})
             return {"status": "success", "device": matched, "action": action}
         return {"error": f"MQTT publish failed for {topic}"}
+
+    # ── blink / sequence (MQTT-only; threading model) ─────────────────────────
 
     def blink_device(device_name: str, times: int = 3, on_seconds: float = 0.5, off_seconds: float = 0.5) -> dict:
         matched, devices = _resolve(device_name)
@@ -741,7 +748,6 @@ def build_tool_dispatch(mqtt, storage, engine=None):
                 storage.update_device_field(device_name, "status", action)
 
     def sequence_actions(steps: list, description: str = "") -> dict:
-        """Execute a timed sequence of device steps with optional delays."""
         devices = storage.get_all_devices()
 
         def _run():
@@ -767,6 +773,8 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         threading.Thread(target=_run, daemon=True).start()
         return {"status": "sequence_started", "steps": len(steps), "description": description or "Custom sequence"}
 
+    # ── Other basic tools ──────────────────────────────────────────────────────
+
     def set_device_brightness(device_name: str, level: int) -> dict:
         matched, devices = _resolve(device_name)
         if not matched:
@@ -780,12 +788,20 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         return {"error": "MQTT publish failed"}
 
     def read_sensor(device_name: str) -> dict:
+        """Read the current value/status of any device (MQTT, Zigbee, or HA)."""
         matched, devices = _resolve(device_name)
         if not matched:
             return {"error": f"Device '{device_name}' not found."}
         d = devices[matched]
-        return {"device": matched, "value": d.get("status", "unknown"),
-                "unit": d.get("unit", ""), "last_updated": d.get("last_updated", "never")}
+        return {
+            "device":             matched,
+            "type":               d.get("type"),
+            "value":              d.get("status", "unknown"),
+            "unit":               d.get("unit", ""),
+            "brightness":         d.get("brightness"),
+            "last_updated":       d.get("last_updated", "never"),
+            "integration_source": d.get("integration_source", "mqtt"),
+        }
 
     def list_devices() -> dict:
         devices = storage.get_all_devices()
@@ -825,7 +841,6 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         return {"workflows": wfs, "count": len(wfs)}
 
     def toggle_workflow_fn(workflow_id: str) -> dict:
-        # Try match by name if ID not found
         wfs = storage.get_workflows()
         if not any(w["id"] == workflow_id for w in wfs):
             match = next((w for w in wfs if w.get("name", "").lower() == workflow_id.lower()), None)
@@ -952,45 +967,27 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         return {"logs": logs, "count": len(logs)}
 
     async def call_hardware_tool_fn(device_name: str, tool_name: str, arguments: dict = None) -> dict:
-        """Call a native MCP tool on an edge device and return the result."""
-        # Import here to avoid circular dependency; mcp is already wired in main.py
-        # We call the REST endpoint logic directly via the mcp_client module
         from app.services.mcp_client import MCPClient
         _mcp = MCPClient(mqtt=mqtt, storage=storage)
         mqtt.set_mcp_response_registry(_mcp.pending)
         result = await _mcp.call_tool(device_name, tool_name, arguments or {})
         return result
 
-    def zigbee_set_fn(device_name: str, state: str = None, brightness: int = None,
-                      color_temp: int = None, color: dict = None,
-                      effect: str = None, transition: float = None) -> dict:
-        matched, devices = _resolve(device_name)
-        if not matched:
-            return {"error": f"Zigbee device '{device_name}' not found", "known_devices": list(devices.keys())}
-        if not devices[matched].get("zigbee"):
-            return {"error": f"'{matched}' is not a Zigbee device. Use control_device instead."}
+    # ── Zigbee management helpers ─────────────────────────────────────────────
 
-        za = getattr(storage, '_zigbee_ref', None)
-        if not za:
-            return {"error": "Zigbee adapter not running. Is ZIGBEE2MQTT_ENABLED=true in .env?"}
-
-        payload = {}
-        if state:       payload["state"]      = state.upper()
-        if brightness:  payload["brightness"] = brightness
-        if color_temp:  payload["color_temp"] = color_temp
-        if color:       payload["color"]      = color
-        if effect:      payload["effect"]     = effect
-        if transition:  payload["transition"] = transition
-
-        ok = za.publish_command(matched, payload)
-        storage.add_log("success" if ok else "error", "ai",
-                        f"AI Zigbee SET: {matched} = {payload}", {"device": matched})
-        return {"device": matched, "payload": payload, "ok": ok}
+    def _get_zigbee():
+        """Return ZigbeeAdapter from registry (preferred) or legacy storage ref."""
+        if registry:
+            za = registry.get("zigbee")
+            if za:
+                return za
+        # Fallback for Telegram bot path (no registry)
+        return getattr(storage, '_zigbee_ref', None)
 
     def zigbee_permit_join_fn(enable: bool, duration: int = 120) -> dict:
-        za = getattr(storage, '_zigbee_ref', None)
+        za = _get_zigbee()
         if not za:
-            return {"error": "Zigbee adapter not running"}
+            return {"error": "Zigbee adapter not running. Is ZIGBEE2MQTT_ENABLED=true in .env?"}
         result = za.permit_join(enable, duration)
         action = "opened" if enable else "closed"
         return {"pairing_mode": action, "duration": duration if enable else 0, "ok": result["ok"]}
@@ -999,14 +996,14 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         matched, devices = _resolve(device_name)
         if not matched:
             return {"error": f"Device '{device_name}' not found"}
-        za = getattr(storage, '_zigbee_ref', None)
+        za = _get_zigbee()
         if not za:
             return {"error": "Zigbee adapter not running"}
         return za.remove_device(matched, force)
 
     def zigbee_group_set_fn(group_name: str, state: str = None, brightness: int = None,
                              color_temp: int = None, color: dict = None, effect: str = None) -> dict:
-        za = getattr(storage, '_zigbee_ref', None)
+        za = _get_zigbee()
         if not za:
             return {"error": "Zigbee adapter not running"}
         payload = {}
@@ -1016,76 +1013,34 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         if color:      payload["color"]      = color
         if effect:     payload["effect"]     = effect
         ok = za.mqtt.publish(
-            f"{os.getenv('ZIGBEE2MQTT_BASE_TOPIC','zigbee2mqtt')}/{group_name}/set",
+            f"{os.getenv('ZIGBEE2MQTT_BASE_TOPIC', 'zigbee2mqtt')}/{group_name}/set",
             json.dumps(payload)
         )
         return {"group": group_name, "payload": payload, "ok": ok}
 
-    def zigbee_read_sensor_fn(device_name: str) -> dict:
-        matched, devices = _resolve(device_name)
-        if not matched:
-            return {"error": f"Device '{device_name}' not found"}
-        d = devices[matched]
-        return {
-            "device":  matched,
-            "type":    d.get("type"),
-            "status":  d.get("status"),
-            "unit":    d.get("unit", ""),
-            "brightness": d.get("brightness"),
-            "last_updated": d.get("last_updated", "never"),
-            "zigbee":  d.get("zigbee", False),
-        }
+    # ── Home Assistant helpers ────────────────────────────────────────────────
 
-    # ── Home Assistant tool handlers ──────────────────────────────────────────
-
-    async def ha_control_fn(entity_id: str, action: str,
-                            brightness_pct: int = None, color_temp_kelvin: int = None,
-                            rgb_color: list = None, temperature: float = None,
-                            hvac_mode: str = None, media_content_id: str = None) -> dict:
-        """Control any Home Assistant entity."""
-        ha = getattr(storage, '_ha_ref', None)
-        if not ha:
-            return {"error": "Home Assistant adapter not running. Set HA_ENABLED=true in .env."}
-        if not ha._connected:
-            return {"error": "Home Assistant is not connected. Check HA_HOST and HA_TOKEN."}
-
-        data = {"state": action.upper()}
-        if brightness_pct is not None:
-            data["brightness_pct"] = brightness_pct
-        if color_temp_kelvin is not None:
-            data["color_temp_kelvin"] = color_temp_kelvin
-        if rgb_color is not None:
-            data["rgb_color"] = rgb_color
-        if temperature is not None:
-            data["temperature"] = temperature
-        if hvac_mode is not None:
-            data["hvac_mode"] = hvac_mode
-        if media_content_id is not None:
-            data["media_content_id"] = media_content_id
-
-        result = await ha.call_service(entity_id, data=data)
-        storage.add_log(
-            "success" if result.get("ok") else "error",
-            "ai",
-            f"AI HA control: {entity_id} → {action.upper()}",
-            {"entity_id": entity_id, "action": action, "data": data}
-        )
-        return result
+    def _get_ha():
+        """Return HomeAssistantAdapter from registry (preferred) or legacy storage ref."""
+        if registry:
+            ha = registry.get("ha")
+            if ha:
+                return ha
+        return getattr(storage, '_ha_ref', None)
 
     def ha_list_entities_fn(domain: str = "") -> dict:
-        """List HA entities from storage, optionally filtered by domain."""
         devices = storage.get_all_devices()
         ha_devices = {k: v for k, v in devices.items() if v.get("ha_entity")}
         if domain:
             ha_devices = {k: v for k, v in ha_devices.items() if v.get("ha_domain") == domain.lower()}
         summary = [
             {
-                "entity_id": k,
-                "type": v.get("type"),
-                "status": v.get("status"),
+                "entity_id":   k,
+                "type":        v.get("type"),
+                "status":      v.get("status"),
                 "description": v.get("description"),
-                "location": v.get("location"),
-                "unit": v.get("unit", ""),
+                "location":    v.get("location"),
+                "unit":        v.get("unit", ""),
             }
             for k, v in ha_devices.items()
         ]
@@ -1093,20 +1048,19 @@ def build_tool_dispatch(mqtt, storage, engine=None):
 
     async def ha_call_service_fn(domain: str, service: str,
                                   entity_id: str = "", data: dict = None) -> dict:
-        """Raw HA service call — for scenes, scripts, notify, etc."""
-        ha = getattr(storage, '_ha_ref', None)
+        ha = _get_ha()
         if not ha:
             return {"error": "Home Assistant adapter not running. Set HA_ENABLED=true in .env."}
         if not ha._connected:
-            return {"error": "Home Assistant is not connected."}
+            return {"error": "Home Assistant is not connected. Check HA_HOST and HA_TOKEN."}
 
         import json as _json
         if ha._ws:
             payload = {
-                "id":      ha._next_id(),
-                "type":    "call_service",
-                "domain":  domain,
-                "service": service,
+                "id":           ha._next_id(),
+                "type":         "call_service",
+                "domain":       domain,
+                "service":      service,
                 "service_data": data or {},
             }
             if entity_id:
@@ -1121,42 +1075,39 @@ def build_tool_dispatch(mqtt, storage, engine=None):
         return {"error": "HA WebSocket not available"}
 
     return {
-        "control_device": control_device,
-        "blink_device": blink_device,
-        "sequence_actions": sequence_actions,
-        "set_device_brightness": set_device_brightness,
-        "read_sensor": read_sensor,
-        "list_devices": list_devices,
-        "register_device": register_device_fn,
-        "delete_device": delete_device_fn,
-        "create_workflow": create_workflow_fn,
-        "list_workflows": list_workflows_fn,
-        "toggle_workflow": toggle_workflow_fn,
-        "delete_workflow": delete_workflow_fn,
-        "execute_workflow": execute_workflow_fn,
-        "get_logs": get_logs_fn,
-        "push_script": push_script_fn,
-        "push_script_group": push_script_group_fn,
-        "rollback_script": rollback_script_fn,
+        "control_device":         control_device,
+        "blink_device":           blink_device,
+        "sequence_actions":       sequence_actions,
+        "set_device_brightness":  set_device_brightness,
+        "read_sensor":            read_sensor,
+        "list_devices":           list_devices,
+        "register_device":        register_device_fn,
+        "delete_device":          delete_device_fn,
+        "create_workflow":        create_workflow_fn,
+        "list_workflows":         list_workflows_fn,
+        "toggle_workflow":        toggle_workflow_fn,
+        "delete_workflow":        delete_workflow_fn,
+        "execute_workflow":       execute_workflow_fn,
+        "get_logs":               get_logs_fn,
+        "push_script":            push_script_fn,
+        "push_script_group":      push_script_group_fn,
+        "rollback_script":        rollback_script_fn,
         "get_device_capabilities": get_device_capabilities_fn,
-        "call_hardware_tool": call_hardware_tool_fn,
-        "zigbee_set": zigbee_set_fn,
-        "zigbee_permit_join": zigbee_permit_join_fn,
-        "zigbee_remove_device": zigbee_remove_device_fn,
-        "zigbee_group_set": zigbee_group_set_fn,
-        "zigbee_read_sensor": zigbee_read_sensor_fn,
+        "call_hardware_tool":     call_hardware_tool_fn,
+        # Zigbee management
+        "zigbee_permit_join":     zigbee_permit_join_fn,
+        "zigbee_remove_device":   zigbee_remove_device_fn,
+        "zigbee_group_set":       zigbee_group_set_fn,
         # Home Assistant
-        "ha_control": ha_control_fn,
-        "ha_list_entities": ha_list_entities_fn,
-        "ha_call_service": ha_call_service_fn,
+        "ha_list_entities":       ha_list_entities_fn,
+        "ha_call_service":        ha_call_service_fn,
     }
 
 
-async def run_chat(user_message: str, history: list, mqtt, storage, engine=None) -> dict:
+async def run_chat(user_message: str, history: list, mqtt, storage, engine=None, registry=None) -> dict:
     """Agentic loop: keep calling tools until the model returns a final text reply."""
-    dispatch = build_tool_dispatch(mqtt, storage, engine)
+    dispatch = build_tool_dispatch(mqtt, storage, engine, registry)
 
-    # Check chat-triggers before OpenAI
     fired = []
     if engine:
         fired = engine.check_chat_trigger(user_message)
@@ -1182,8 +1133,7 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
         )
 
     storage.add_log(
-        "info",
-        "ai",
+        "info", "ai",
         f"AI prompt mode: {'full' if is_big_task else 'compact'}",
         {"message": user_message[:80]}
     )
@@ -1200,9 +1150,9 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
     try:
         for _ in range(MAX_ROUNDS):
             kwargs: dict = {
-                "model": _model,
+                "model":    _model,
                 "messages": messages,
-                "tools": active_tools,
+                "tools":    active_tools,
                 "tool_choice": "auto",
             }
             if not is_big_task:
@@ -1227,7 +1177,6 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                 assistant_message = choice.message
                 messages.append(assistant_message)
 
-                # Parse all tool calls first
                 parsed = []
                 for tc in assistant_message.tool_calls:
                     try:
@@ -1236,7 +1185,6 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
                         tool_args = {}
                     parsed.append((tc.id, tc.function.name, tool_args))
 
-                # Execute all tools in parallel
                 results = await asyncio.gather(*[
                     _exec_tool(tc_id, name, args, dispatch)
                     for tc_id, name, args in parsed
@@ -1266,9 +1214,9 @@ async def run_chat(user_message: str, history: list, mqtt, storage, engine=None)
         return {"reply": f"AI error: {str(e)}", "tool_calls": []}
 
 
-async def run_chat_stream(user_message: str, history: list, mqtt, storage, engine=None):
+async def run_chat_stream(user_message: str, history: list, mqtt, storage, engine=None, registry=None):
     """Streaming agentic loop. Yields SSE-encoded lines for token-by-token delivery."""
-    dispatch = build_tool_dispatch(mqtt, storage, engine)
+    dispatch = build_tool_dispatch(mqtt, storage, engine, registry)
 
     fired = []
     if engine:
@@ -1309,11 +1257,11 @@ async def run_chat_stream(user_message: str, history: list, mqtt, storage, engin
     try:
         for _ in range(MAX_ROUNDS):
             kwargs: dict = {
-                "model": _model,
-                "messages": messages,
-                "tools": active_tools,
+                "model":       _model,
+                "messages":    messages,
+                "tools":       active_tools,
                 "tool_choice": "auto",
-                "stream": True,
+                "stream":      True,
             }
             if not is_big_task:
                 kwargs["max_completion_tokens"] = 3000
@@ -1364,13 +1312,11 @@ async def run_chat_stream(user_message: str, history: list, mqtt, storage, engin
             if finish_reason == "tool_calls":
                 tcs = [tool_calls_acc[i] for i in sorted(tool_calls_acc.keys())]
 
-                # Notify client of pending tool calls
                 for tc in tcs:
                     yield f"data: {json.dumps({'type': 'tool_call', 'tool': tc['name']})}\n\n"
 
-                # Reconstruct assistant message for context
                 messages.append({
-                    "role": "assistant",
+                    "role":    "assistant",
                     "content": "".join(content_parts) or None,
                     "tool_calls": [
                         {"id": tc["id"], "type": "function",
@@ -1379,7 +1325,6 @@ async def run_chat_stream(user_message: str, history: list, mqtt, storage, engin
                     ],
                 })
 
-                # Execute tools in parallel
                 parsed = []
                 for tc in tcs:
                     try:
@@ -1396,9 +1341,9 @@ async def run_chat_stream(user_message: str, history: list, mqtt, storage, engin
                 for tc_id, tool_name, tool_args, result in results:
                     tool_calls_log.append({"tool": tool_name, "args": tool_args, "result": result})
                     messages.append({
-                        "role": "tool",
+                        "role":         "tool",
                         "tool_call_id": tc_id,
-                        "content": json.dumps(result),
+                        "content":      json.dumps(result),
                     })
                 continue
 

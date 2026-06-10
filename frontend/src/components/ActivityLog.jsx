@@ -1,11 +1,26 @@
 import { useEffect, useState } from 'react'
 import { getLogs } from '../api'
+import { RotateCcw } from 'lucide-react'
 
-const LEVEL_STYLE = {
-  success: { color: '#22c55e', badge: 'OK'   },
-  error:   { color: '#f87171', badge: 'ERR'  },
-  warning: { color: '#fbbf24', badge: 'WARN' },
-  info:    { color: 'var(--accent-light)', badge: 'INFO' },
+const C = {
+  panel:  'rgba(255,255,255,0.03)',
+  border: 'rgba(255,255,255,0.07)',
+  text1:  'rgba(255,255,255,0.82)',
+  text2:  'rgba(255,255,255,0.50)',
+  text3:  'rgba(255,255,255,0.25)',
+  green:  '#22c55e',
+  red:    '#ef4444',
+  amber:  '#f59e0b',
+  blue:   '#6b8cff',
+  sans:   "'Outfit', sans-serif",
+  mono:   "'JetBrains Mono', ui-monospace, monospace",
+}
+
+const LEVEL = {
+  success: { color: '#6b8cff',                badge: 'OK'   },
+  error:   { color: '#ef4444',                badge: 'ERR'  },
+  warning: { color: 'rgba(255,255,255,0.40)', badge: 'WARN' },
+  info:    { color: 'rgba(255,255,255,0.28)', badge: 'INFO' },
 }
 
 export default function ActivityLog({ limit = 30, refreshKey }) {
@@ -18,7 +33,7 @@ export default function ActivityLog({ limit = 30, refreshKey }) {
       const res = await getLogs(limit)
       setLogs(res.data || [])
     } catch { setLogs([]) }
-    finally { setLoading(false) }
+    finally  { setLoading(false) }
   }
 
   useEffect(() => {
@@ -28,44 +43,112 @@ export default function ActivityLog({ limit = 30, refreshKey }) {
   }, [limit, refreshKey])
 
   return (
-    <div className="neu-section" style={{ height: 'max-content', position: 'sticky', top: 100 }}>
-      {/* header */}
-      <div className="neu-section-header">
+    <div style={{
+      background: C.panel,
+      border: `1px solid ${C.border}`,
+      borderRadius: 16,
+      overflow: 'hidden',
+      position: 'sticky',
+      top: 0,
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 18px',
+        borderBottom: `1px solid ${C.border}`,
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className={loading ? 'led led-amber' : 'led-pulse'} />
-          <h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: loading ? 'rgba(255,255,255,0.25)' : '#1a2eff',
+            boxShadow: `0 0 6px ${loading ? 'rgba(255,255,255,0.2)' : 'rgba(26,46,255,0.6)'}`,
+            display: 'inline-block', flexShrink: 0,
+            animation: loading ? 'ledPulse 1s ease-in-out infinite' : 'none',
+          }} />
+          <span style={{
+            fontFamily: C.sans, fontWeight: 600,
+            fontSize: '0.82rem', color: C.text1,
+          }}>
             Activity Log
-          </h2>
+          </span>
         </div>
         <button
-          id="activity-refresh-btn"
           onClick={loadLogs}
-          className="neu-btn-sm"
-          title="Refresh logs"
-          style={{ fontSize: 12 }}
+          title="Refresh"
+          style={{
+            all: 'unset', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 28, height: 28,
+            borderRadius: 8,
+            border: `1px solid ${C.border}`,
+            color: C.text2,
+            transition: 'all 0.15s',
+          }}
         >
-          ⟳
+          <RotateCcw size={13} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
         </button>
       </div>
 
-      {/* log list — terminal style */}
-      <div className="neu-terminal" style={{ maxHeight: 460, borderRadius: 0, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 }}>
+      {/* Log list */}
+      <div style={{
+        padding: '8px 0',
+        maxHeight: 500,
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: C.mono,
+        fontSize: '0.7rem',
+        lineHeight: 1.6,
+      }}>
         {logs.length === 0 ? (
-          <span style={{ color: 'var(--text-muted)' }}>{'> No activity logged yet.'}</span>
+          <span style={{ color: C.text3, padding: '8px 18px' }}>
+            {'> no activity logged yet.'}
+          </span>
         ) : (
-          logs.map(log => {
-            const ls = LEVEL_STYLE[log.level] || LEVEL_STYLE.info
+          logs.map((log, idx) => {
+            const ls = LEVEL[log.level] || LEVEL.info
             const ts = log.ts
-              ? new Date(log.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+              ? new Date(log.ts).toLocaleTimeString([], {
+                  hour: '2-digit', minute: '2-digit', second: '2-digit',
+                })
               : '?'
             return (
-              <div key={log.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 3 }}>
-                  <span style={{ color: ls.color, fontWeight: 700, fontSize: 10, letterSpacing: '0.06em' }}>[{ls.badge}]</span>
-                  <span style={{ color: 'var(--accent)', fontSize: 10 }}>{(log.source || 'system').toUpperCase()}</span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 10, marginLeft: 'auto' }}>{ts}</span>
+              <div
+                key={log.id}
+                style={{
+                  padding: '7px 18px',
+                  borderBottom: idx < logs.length - 1 ? `1px solid ${C.border}` : 'none',
+                  animation: 'rowIn 0.2s ease',
+                  animationFillMode: 'both',
+                  animationDelay: `${idx * 0.018}s`,
+                }}
+              >
+                {/* Meta row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                  <span style={{
+                    color: ls.color, fontWeight: 600,
+                    fontSize: '0.62rem', letterSpacing: '0.06em',
+                    minWidth: 34,
+                  }}>
+                    [{ls.badge}]
+                  </span>
+                  <span style={{
+                    color: 'rgba(107,140,255,0.8)', fontSize: '0.62rem',
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                  }}>
+                    {(log.source || 'system').replace(/_/g, '-')}
+                  </span>
+                  <span style={{ color: C.text3, fontSize: '0.6rem', marginLeft: 'auto' }}>
+                    {ts}
+                  </span>
                 </div>
-                <div style={{ color: '#b0bec5', fontSize: 11, lineHeight: 1.5 }}>{'> '}{log.message}</div>
+                {/* Message */}
+                <div style={{ color: 'rgba(184,196,222,0.75)', paddingLeft: 8 }}>
+                  <span style={{ color: C.text3, marginRight: 4 }}>{'>'}</span>
+                  {log.message}
+                </div>
               </div>
             )
           })
