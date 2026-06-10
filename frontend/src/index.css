@@ -1129,6 +1129,9 @@
   .app-main {
     padding: 16px 16px !important;
   }
+  .app-main.chat-active {
+    padding: 0 !important;
+  }
 
   /* Dashboard overrides */
   .dashboard-grid-container {

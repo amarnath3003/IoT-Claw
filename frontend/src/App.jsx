@@ -415,7 +415,7 @@ export default function App() {
         </nav>
 
         {/* ── MAIN CONTENT ── */}
-        <main className="app-main" style={{
+        <main className={`app-main ${activeTab === 'Chat' ? 'chat-active' : ''}`} style={{
           flex: 1,
           overflowY: 'auto',
           padding: '24px 28px',

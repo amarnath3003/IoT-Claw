@@ -81,7 +81,7 @@ function MessageRow({ msg }) {
       </div>
 
       {/* Bubble column */}
-      <div style={{
+      <div className="chat-bubble-col" style={{
         maxWidth: '72%',
         display: 'flex',
         flexDirection: 'column',
@@ -466,6 +466,33 @@ export default function Chat({ messages, setMessages }) {
         }
 
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 768px) {
+          .chat-root {
+            height: calc(100dvh - 56px); /* subtract header height */
+            border-radius: 0;
+            border-left: none;
+            border-right: none;
+            border-bottom: none;
+          }
+          .chat-header {
+            padding: 10px 14px;
+          }
+          .chat-messages {
+            padding: 8px 12px 0;
+          }
+          .chat-input-area {
+            padding: 10px 12px;
+          }
+          .chat-bubble-col {
+            max-width: 88% !important;
+          }
+          .qchip {
+            padding: 4px 10px;
+            font-size: 11px;
+          }
+        }
       `}</style>
 
       <div className="chat-root" style={{ position: 'relative' }}>
