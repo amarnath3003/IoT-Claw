@@ -50,8 +50,9 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([INITIAL_MESSAGE])
   const [clawEnabled, setClawEnabled] = useState(false)
 
+  const wsUrl = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8000/ws`
   const { deviceStates, isConnected, brokerConnected, lastMessage, zigbeePairing } =
-    useWebSocket('ws://127.0.0.1:8000/ws')
+    useWebSocket(wsUrl)
   const deviceCount = Object.keys(deviceStates).length
 
   // Fetch initial Claw Mode state from backend
