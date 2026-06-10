@@ -1123,6 +1123,9 @@
   .hamburger-btn:active { background: rgba(255,255,255,0.1); }
 
   /* Adjust Main layout */
+  .app-header {
+    padding: 0 16px !important;
+  }
   .app-main {
     padding: 16px 16px !important;
   }

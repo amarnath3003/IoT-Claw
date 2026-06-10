@@ -74,7 +74,7 @@ export default function App() {
     }}>
 
       {/* ── HEADER ── */}
-      <header style={{
+      <header className="app-header" style={{
         background: '#0b0b14',
         borderBottom: `1px solid ${S.border}`,
         padding: '0 24px',
@@ -123,7 +123,7 @@ export default function App() {
             }}>
               iot<span style={{ color: '#1a2eff' }}>CLAW</span>
             </div>
-            <div style={{
+            <div className="desktop-only" style={{
               fontFamily: S.mono,
               fontSize: '0.58rem',
               letterSpacing: '0.12em',
@@ -137,11 +137,11 @@ export default function App() {
         </div>
 
         {/* Right: Status indicators */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 1, overflow: 'hidden' }}>
 
           {/* Claw Mode active indicator — only shown when enabled */}
           {clawEnabled && (
-            <div style={{
+            <div className="desktop-flex" style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '5px 11px',
               border: '1px solid rgba(26,46,255,0.25)',
@@ -164,8 +164,8 @@ export default function App() {
           )}
 
           {/* Telegram badge */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
+          <div className="desktop-flex" style={{
+            alignItems: 'center', gap: 6,
             padding: '5px 11px',
             border: '1px solid rgba(26,46,255,0.2)',
             borderRadius: 8,
@@ -197,9 +197,9 @@ export default function App() {
               flexShrink: 0,
               animation: isConnected ? 'ledBlink 2.5s ease-in-out infinite' : 'none',
             }} />
-            {isConnected ? 'Online' : 'Offline'}
+            <span className="desktop-only">{isConnected ? 'Online' : 'Offline'}</span>
             {isConnected && deviceCount > 0 && (
-              <span style={{
+              <span className="desktop-only" style={{
                 color: S.text3,
                 fontFamily: S.mono,
                 fontSize: '0.65rem',
