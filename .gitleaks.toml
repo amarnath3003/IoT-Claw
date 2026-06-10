@@ -1,0 +1,13 @@
+title = "IoT-Claw Gitleaks Config"
+
+# By default, the gitleaks-action will use its own highly comprehensive 
+# list of secret detection rules (OpenAI, AWS, GCP, generic secrets, etc.).
+# This file is used to specify allowlists for files or paths that might 
+# trigger false positives, like example environment files.
+
+[allowlist]
+description = "Global allowlist for files that contain safe dummy secrets"
+paths = [
+    '''frontend/\.env\.example''',
+    '''backend/\.env\.example'''
+]
