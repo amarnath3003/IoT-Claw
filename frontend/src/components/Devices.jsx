@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Wifi, Radio, Home, Trash2, Search, Network, Layers, List } from 'lucide-react'
+import { Wifi, Radio, Home, Trash2, Search, Network, Layers, List, Plus, X } from 'lucide-react'
 import { deleteDevice, registerDevice, getGroups } from '../api'
 import ZigbeeManager from './ZigbeeManager'
 import GroupManager from './GroupManager'
+import useMediaQuery from '../hooks/useMediaQuery'
 
 const C = {
   panel:  'rgba(255,255,255,0.03)',
@@ -268,6 +269,9 @@ export default function Devices({ deviceStates, wsMessages }) {
   const [showZigbeeMgr, setShowZigbeeMgr] = useState(false)
   const [viewMode, setViewMode]           = useState('flat')   // 'flat' | 'grouped'
   const [groups, setGroups]               = useState([])
+  
+  const isMobile = useMediaQuery('(max-width: 768px)')
+  const [showMobileSheet, setShowMobileSheet] = useState(false)
 
   const fetchGroups = useCallback(async () => {
     try { const r = await getGroups(); setGroups(r.data) }
@@ -322,15 +326,12 @@ export default function Devices({ deviceStates, wsMessages }) {
   const proto = PROTOCOLS.find(p => p.key === protocol)
   const ProtoIcon = proto.Icon
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div className="devices-grid-container" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 28, alignItems: 'start' }}>
-
-        {/* ══ LEFT: Add Device Form ══ */}
-        <div style={{
-          background: C.panel, border: `1px solid ${C.border}`,
-          borderRadius: 16, overflow: 'hidden',
-        }}>
+  const addDeviceFormNode = (
+    <div style={{
+      background: isMobile ? 'transparent' : C.panel, 
+      border: isMobile ? 'none' : `1px solid ${C.border}`,
+      borderRadius: isMobile ? 0 : 16, overflow: 'hidden',
+    }}>
           {/* Panel header */}
           <div style={{
             padding: '16px 20px', borderBottom: `1px solid ${C.border}`,
@@ -541,7 +542,18 @@ export default function Devices({ deviceStates, wsMessages }) {
               {saving ? 'Registering…' : `Add ${proto.label} Device`}
             </button>
           </form>
-        </div>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: isMobile ? 80 : 0 }}>
+      <div className={isMobile ? "mobile-devices-layout" : "devices-grid-container"} style={{ 
+        display: isMobile ? 'block' : 'grid', 
+        gridTemplateColumns: '400px 1fr', gap: 28, alignItems: 'start' 
+      }}>
+
+        {/* ══ LEFT: Add Device Form ══ */}
+        {!isMobile && addDeviceFormNode}
 
         {/* ══ RIGHT: Unified device list ══ */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -853,6 +865,36 @@ export default function Devices({ deviceStates, wsMessages }) {
           )}
         </div>
       </div>
+
+      {/* ── MOBILE FAB & BOTTOM SHEET ── */}
+      {isMobile && (
+        <>
+          <button 
+            className="mobile-fab"
+            onClick={() => setShowMobileSheet(true)}
+          >
+            <Plus size={24} color="#fff" />
+          </button>
+
+          {showMobileSheet && (
+            <div 
+              className="bottom-sheet-overlay"
+              style={{ display: 'block', animation: 'fadeInOverlay 0.2s forwards' }}
+              onClick={() => setShowMobileSheet(false)}
+            />
+          )}
+
+          <div className={`bottom-sheet ${showMobileSheet ? 'open' : ''}`}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: C.sans, fontWeight: 700, fontSize: '1rem', color: '#fff' }}>Add Device</span>
+              <button onClick={() => setShowMobileSheet(false)} style={{ all: 'unset', cursor: 'pointer', color: C.text2 }}><X size={20}/></button>
+            </div>
+            <div style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+              {addDeviceFormNode}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

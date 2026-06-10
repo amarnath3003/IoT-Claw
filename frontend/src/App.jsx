@@ -15,6 +15,7 @@ import FlashDevice from './components/FlashDevice'
 import ClawModeToggle from './components/ClawModeToggle'
 import NotificationBell from './components/NotificationBell'
 import useWebSocket from './hooks/useWebSocket'
+import useMediaQuery from './hooks/useMediaQuery'
 import { API_BASE } from './api'
 import { zigbeePermitJoin } from './api'
 import './index.css'
@@ -49,7 +50,8 @@ export default function App() {
   const [activeTab, setActiveTab]     = useState('Dashboard')
   const [chatMessages, setChatMessages] = useState([INITIAL_MESSAGE])
   const [clawEnabled, setClawEnabled] = useState(false)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  
+  const isMobile = useMediaQuery('(max-width: 768px)')
 
   const wsUrl = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8000/ws`
   const { deviceStates, isConnected, brokerConnected, lastMessage, zigbeePairing } =
@@ -87,18 +89,9 @@ export default function App() {
         zIndex: 100,
         flexShrink: 0,
       }}>
-        {/* Left: Brand & Mobile Menu */}
+        {/* Left: Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Hamburger (Mobile Only) */}
-          <button 
-            className="mobile-only-flex hamburger-btn"
-            onClick={() => setIsDrawerOpen(true)}
-            style={{ marginRight: 4 }}
-          >
-            <Menu size={18} />
-          </button>
-
-          <div className="desktop-flex" style={{
+          <div style={{
             width: 32, height: 32,
             borderRadius: 8,
             overflow: 'hidden',
@@ -163,21 +156,23 @@ export default function App() {
             </div>
           )}
 
-          {/* Telegram badge */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '5px 11px',
-            border: '1px solid rgba(26,46,255,0.2)',
-            borderRadius: 8,
-            background: 'rgba(26,46,255,0.05)',
-            fontFamily: S.sans,
-            fontSize: '0.75rem',
-            fontWeight: 500,
-            color: 'rgba(255,255,255,0.50)',
-          }}>
-            <Radio size={11} />
-            Telegram
-          </div>
+          {/* Telegram badge (hidden on mobile) */}
+          {!isMobile && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '5px 11px',
+              border: '1px solid rgba(26,46,255,0.2)',
+              borderRadius: 8,
+              background: 'rgba(26,46,255,0.05)',
+              fontFamily: S.sans,
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              color: 'rgba(255,255,255,0.50)',
+            }}>
+              <Radio size={11} />
+              Telegram
+            </div>
+          )}
 
           {/* Connection status */}
           <div style={{
@@ -276,54 +271,24 @@ export default function App() {
         </div>
       )}
 
-      {/* ── MOBILE DRAWER OVERLAY ── */}
-      {isDrawerOpen && (
-        <div 
-          className="mobile-drawer-overlay mobile-only" 
-          onClick={() => setIsDrawerOpen(false)}
-        />
-      )}
-
       {/* ── BODY ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
-        {/* ── SIDEBAR NAV (Desktop / Mobile Drawer) ── */}
-        <nav 
-          className={`desktop-sidebar ${isDrawerOpen ? 'mobile-drawer open' : 'mobile-drawer'}`}
-          style={{
-          width: 210,
-          background: '#0b0b14',
-          borderRight: `1px solid ${S.border}`,
-          padding: '12px 8px',
-          display: 'flex',
-          flexDirection: 'column',
-          flexShrink: 0,
-          zIndex: 10,
-          overflowY: 'auto',
-        }}>
-          {/* Mobile Drawer Header */}
-          <div className="mobile-only-flex" style={{
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '4px 8px 16px',
-            marginBottom: 12,
-            borderBottom: `1px solid ${S.border}`,
+        {/* ── SIDEBAR NAV (Desktop Only) ── */}
+        {!isMobile && (
+          <nav 
+            className="desktop-sidebar"
+            style={{
+            width: 210,
+            background: '#0b0b14',
+            borderRight: `1px solid ${S.border}`,
+            padding: '12px 8px',
+            display: 'flex',
+            flexDirection: 'column',
+            flexShrink: 0,
+            zIndex: 10,
+            overflowY: 'auto',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 24, height: 24, borderRadius: 6, overflow: 'hidden', background: '#000' }}>
-                <img src="/logo.jpg" alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-              </div>
-              <div style={{ fontFamily: S.sans, fontSize: '0.9rem', fontWeight: 700, color: S.text1 }}>
-                iot<span style={{ color: '#1a2eff' }}>CLAW</span>
-              </div>
-            </div>
-            <button 
-              onClick={() => setIsDrawerOpen(false)}
-              style={{ all: 'unset', cursor: 'pointer', color: S.text2, padding: 4 }}
-            >
-              <X size={18} />
-            </button>
-          </div>
 
           {/* Section label */}
           <div style={{
@@ -347,10 +312,7 @@ export default function App() {
                 <button
                   key={tab.id}
                   id={`tab-${tab.id.toLowerCase()}`}
-                  onClick={() => {
-                    setActiveTab(tab.id)
-                    setIsDrawerOpen(false)
-                  }}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`tac-tab${isActive ? ' active' : ''}`}
                   style={{ position: 'relative' }}
                 >
@@ -412,7 +374,8 @@ export default function App() {
               </div>
             )}
           </div>
-        </nav>
+          </nav>
+        )}
 
         {/* ── MAIN CONTENT ── */}
         <main className="app-main" style={{
@@ -432,6 +395,34 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {/* ── MOBILE BOTTOM NAVIGATION BAR ── */}
+      {isMobile && (
+        <nav className="mobile-bottom-nav">
+          {[
+            { id: 'Dashboard', icon: LayoutDashboard, label: 'Home' },
+            { id: 'Devices', icon: Cpu, label: 'Devices' },
+            { id: 'Chat', icon: MessageSquare, label: 'Chat' },
+            { id: 'Workflows', icon: GitBranch, label: 'Automate' },
+            // Keeping it to 4 primary items for aesthetics
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`bottom-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <div className="nav-icon-wrap">
+                  <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                </div>
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
     </div>
   )
 }
