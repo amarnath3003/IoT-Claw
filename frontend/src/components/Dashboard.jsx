@@ -3,7 +3,6 @@ import ActivityLog from './ActivityLog'
 import DeviceCard from './DeviceCard'
 import ClawActivity from './ClawActivity'
 import { getWorkflows, getGroups } from '../api'
-import useMediaQuery from '../hooks/useMediaQuery'
 
 const C = {
   panel:  'rgba(255,255,255,0.03)',
@@ -23,8 +22,6 @@ const C = {
 export default function Dashboard({ deviceStates, wsMessages, clawEnabled }) {
   const [activeWorkflows, setActiveWorkflows] = useState(0)
   const [groupCount, setGroupCount]           = useState(0)
-  
-  const isMobile = useMediaQuery('(max-width: 768px)')
 
   useEffect(() => {
     getWorkflows()
@@ -59,48 +56,29 @@ export default function Dashboard({ deviceStates, wsMessages, clawEnabled }) {
       {/* ── LEFT: device grid ── */}
       <div>
 
-        {/* ── MOBILE HERO ── */}
-        {isMobile && (
-          <div style={{ marginBottom: 28, marginTop: 4, padding: '0 4px' }}>
-            <div style={{ fontFamily: C.sans, fontSize: '2.1rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
-              Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}.
-            </div>
-            <div style={{ fontFamily: C.sans, fontSize: '0.95rem', color: C.text2, marginTop: 8 }}>
-              Monitoring <strong style={{ color: '#6b8cff' }}>{devices.length}</strong> active devices.
-            </div>
-          </div>
-        )}
-
         {/* Stats strip */}
         {devices.length > 0 && (
-          <div className={isMobile ? "mobile-stats-scroll" : "dashboard-stats-strip"} style={{
-            display: isMobile ? 'flex' : 'grid',
-            gridTemplateColumns: isMobile ? 'none' : 'repeat(6, 1fr)',
+          <div className="dashboard-stats-strip" style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(6, 1fr)',
             marginBottom: 28,
-            background: isMobile ? 'transparent' : C.panel,
-            border: isMobile ? 'none' : `1px solid ${C.border}`,
-            borderRadius: isMobile ? 0 : 16,
-            overflow: isMobile ? 'visible' : 'hidden',
+            background: C.panel,
+            border: `1px solid ${C.border}`,
+            borderRadius: 16,
+            overflow: 'hidden',
           }}>
             {stats.map((s, i) => (
               <div
                 key={s.label}
-                className={isMobile ? "mobile-stat-card" : ""}
                 style={{
                   padding: '20px 22px',
-                  borderRight: (!isMobile && i < stats.length - 1) ? `1px solid ${C.border}` : 'none',
-                  background: isMobile ? C.panel : 'transparent',
-                  border: isMobile ? `1px solid ${C.border}` : (!isMobile && i < stats.length - 1) ? `1px solid ${C.border}` : 'none',
-                  borderRadius: isMobile ? 16 : 0,
+                  borderRight: i < stats.length - 1 ? `1px solid ${C.border}` : 'none',
                   position: 'relative',
-                  transition: 'background 0.2s, transform 0.15s',
+                  transition: 'background 0.2s',
                   cursor: 'default',
-                  overflow: 'hidden',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = isMobile ? 'rgba(255,255,255,0.06)' : 'rgba(26,46,255,0.04)'}
-                onMouseLeave={e => e.currentTarget.style.background = isMobile ? C.panel : 'transparent'}
-                onPointerDown={e => { if (isMobile) e.currentTarget.style.transform = 'scale(0.96)' }}
-                onPointerUp={e => { if (isMobile) e.currentTarget.style.transform = 'scale(1)' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(26,46,255,0.04)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
                 {/* Colored bottom accent bar */}
                 <div style={{
