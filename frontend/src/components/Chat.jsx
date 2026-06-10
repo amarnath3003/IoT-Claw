@@ -58,7 +58,7 @@ function MessageRow({ msg }) {
       animation: 'rowIn 0.2s ease both',
     }}>
       {/* Avatar */}
-      <div style={{
+      <div className="chat-avatar" style={{
         width: 28, height: 28,
         borderRadius: isUser ? 8 : 10,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -89,7 +89,7 @@ function MessageRow({ msg }) {
         gap: 4,
       }}>
         {/* Name + time */}
-        <div style={{
+        <div className="chat-msg-meta" style={{
           display: 'flex', alignItems: 'baseline', gap: 7,
           flexDirection: isUser ? 'row-reverse' : 'row',
           paddingLeft: isUser ? 0 : 2,
@@ -470,27 +470,90 @@ export default function Chat({ messages, setMessages }) {
         /* ── RESPONSIVE ── */
         @media (max-width: 768px) {
           .chat-root {
-            height: calc(100dvh - 56px); /* subtract header height */
+            height: 100%;
             border-radius: 0;
-            border-left: none;
-            border-right: none;
-            border-bottom: none;
+            border: none;
+            background: transparent;
           }
           .chat-header {
-            padding: 10px 14px;
+            display: none !important;
           }
           .chat-messages {
-            padding: 8px 12px 0;
+            padding: 0 16px;
           }
-          .chat-input-area {
-            padding: 10px 12px;
+          .chat-avatar, .chat-msg-meta {
+            display: none !important;
           }
           .chat-bubble-col {
-            max-width: 88% !important;
+            max-width: 90% !important;
+            gap: 2px !important;
+          }
+          .chat-bubble {
+            border-radius: 18px !important;
+            padding: 10px 16px !important;
+            border: none !important;
+          }
+          .user-bubble {
+            background: #1a2eff !important;
+            color: #fff !important;
+            border-bottom-right-radius: 4px !important;
+            border-top-right-radius: 18px !important;
+            border-top-left-radius: 18px !important;
+            border-bottom-left-radius: 18px !important;
+          }
+          .ai-bubble {
+            background: rgba(255,255,255,0.08) !important;
+            color: #fff !important;
+            border-bottom-left-radius: 4px !important;
+            border-top-left-radius: 18px !important;
+            border-top-right-radius: 18px !important;
+            border-bottom-right-radius: 18px !important;
+          }
+          .chat-input-area {
+            padding: 10px 16px 14px;
+            background: rgba(11, 11, 20, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255,255,255,0.08);
+          }
+          .chat-textarea {
+            background: rgba(255,255,255,0.06);
+            border: none;
+            border-radius: 20px;
+            padding: 10px 16px;
+          }
+          .chat-send {
+            border-radius: 50%;
+            background: transparent !important;
+            box-shadow: none !important;
+            color: #1a2eff !important;
+          }
+          .chat-send:not(:disabled) {
+            background: transparent !important;
+            color: #1a2eff !important;
+            box-shadow: none !important;
+          }
+          .chat-send:disabled {
+            background: transparent !important;
+            color: rgba(255,255,255,0.2) !important;
+          }
+          .scroll-down-btn {
+            bottom: 76px;
+            right: 16px;
+            background: rgba(11, 11, 20, 0.8);
+            backdrop-filter: blur(8px);
           }
           .qchip {
-            padding: 4px 10px;
-            font-size: 11px;
+            padding: 6px 12px;
+            font-size: 13px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.05);
+            border: none;
+          }
+          .quick-prompts-row {
+            flex-wrap: wrap !important;
+            overflow-x: visible !important;
+            padding-bottom: 8px !important;
           }
         }
       `}</style>
@@ -566,12 +629,14 @@ export default function Chat({ messages, setMessages }) {
           )}
 
           {visibleMsgs.map((msg, i) => (
-            <MessageRow key={`${msg.role}-${i}`} msg={msg} />
+            <div style={{ marginTop: i === 0 ? 12 : 0 }} key={`${msg.role}-${i}`}>
+              <MessageRow msg={msg} />
+            </div>
           ))}
 
           {/* Quick prompts row after welcome (when there are messages) */}
           {visibleMsgs.length > 0 && !loading && (
-            <div style={{
+            <div className="quick-prompts-row" style={{
               padding: '12px 0 16px',
               display: 'flex', gap: 7, flexWrap: 'nowrap',
               overflowX: 'auto',
@@ -599,7 +664,10 @@ export default function Chat({ messages, setMessages }) {
 
         {/* ── Input ── */}
         <div className="chat-input-area">
-          <div className="chat-input-row">
+          <div className="chat-input-row" style={{ alignItems: 'center' }}>
+            <button className="clear-chat-btn mobile-only-flex" onClick={clearChat} title="Clear Chat" style={{ alignSelf: 'flex-end', marginBottom: 2 }}>
+              <Trash2 size={18} />
+            </button>
             <textarea
               id="chat-input"
               ref={inputRef}
