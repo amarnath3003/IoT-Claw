@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Cpu, MessageSquare, GitBranch,
   Library, Zap, Home,
-  Radio, Wifi, WifiOff, ChevronRight
+  Radio, Wifi, WifiOff, ChevronRight, Menu, X
 } from 'lucide-react'
 import Chat from './components/Chat'
 import Dashboard from './components/Dashboard'
@@ -49,6 +49,7 @@ export default function App() {
   const [activeTab, setActiveTab]     = useState('Dashboard')
   const [chatMessages, setChatMessages] = useState([INITIAL_MESSAGE])
   const [clawEnabled, setClawEnabled] = useState(false)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   const wsUrl = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8000/ws`
   const { deviceStates, isConnected, brokerConnected, lastMessage, zigbeePairing } =
@@ -86,9 +87,18 @@ export default function App() {
         zIndex: 100,
         flexShrink: 0,
       }}>
-        {/* Left: Brand */}
+        {/* Left: Brand & Mobile Menu */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
+          {/* Hamburger (Mobile Only) */}
+          <button 
+            className="mobile-only-flex hamburger-btn"
+            onClick={() => setIsDrawerOpen(true)}
+            style={{ marginRight: 4 }}
+          >
+            <Menu size={18} />
+          </button>
+
+          <div className="desktop-flex" style={{
             width: 32, height: 32,
             borderRadius: 8,
             overflow: 'hidden',
@@ -266,11 +276,21 @@ export default function App() {
         </div>
       )}
 
+      {/* ── MOBILE DRAWER OVERLAY ── */}
+      {isDrawerOpen && (
+        <div 
+          className="mobile-drawer-overlay mobile-only" 
+          onClick={() => setIsDrawerOpen(false)}
+        />
+      )}
+
       {/* ── BODY ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
-        {/* ── SIDEBAR NAV ── */}
-        <nav style={{
+        {/* ── SIDEBAR NAV (Desktop / Mobile Drawer) ── */}
+        <nav 
+          className={`desktop-sidebar ${isDrawerOpen ? 'mobile-drawer open' : 'mobile-drawer'}`}
+          style={{
           width: 210,
           background: '#0b0b14',
           borderRight: `1px solid ${S.border}`,
@@ -281,6 +301,30 @@ export default function App() {
           zIndex: 10,
           overflowY: 'auto',
         }}>
+          {/* Mobile Drawer Header */}
+          <div className="mobile-only-flex" style={{
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '4px 8px 16px',
+            marginBottom: 12,
+            borderBottom: `1px solid ${S.border}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 24, height: 24, borderRadius: 6, overflow: 'hidden', background: '#000' }}>
+                <img src="/logo.jpg" alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </div>
+              <div style={{ fontFamily: S.sans, fontSize: '0.9rem', fontWeight: 700, color: S.text1 }}>
+                iot<span style={{ color: '#1a2eff' }}>CLAW</span>
+              </div>
+            </div>
+            <button 
+              onClick={() => setIsDrawerOpen(false)}
+              style={{ all: 'unset', cursor: 'pointer', color: S.text2, padding: 4 }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
           {/* Section label */}
           <div style={{
             fontFamily: S.sans,
@@ -303,7 +347,10 @@ export default function App() {
                 <button
                   key={tab.id}
                   id={`tab-${tab.id.toLowerCase()}`}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    setActiveTab(tab.id)
+                    setIsDrawerOpen(false)
+                  }}
                   className={`tac-tab${isActive ? ' active' : ''}`}
                   style={{ position: 'relative' }}
                 >
@@ -368,7 +415,7 @@ export default function App() {
         </nav>
 
         {/* ── MAIN CONTENT ── */}
-        <main style={{
+        <main className="app-main" style={{
           flex: 1,
           overflowY: 'auto',
           padding: '24px 28px',

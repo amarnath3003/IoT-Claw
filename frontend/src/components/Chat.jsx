@@ -331,6 +331,14 @@ export default function Chat({ messages, setMessages }) {
           font-family: 'Outfit', sans-serif;
         }
 
+        @media (max-width: 768px) {
+          .chat-root {
+            height: calc(100vh - 90px);
+            border-radius: 12px;
+            border: none;
+          }
+        }
+
         /* ── Header ── */
         .chat-header {
           display: flex;

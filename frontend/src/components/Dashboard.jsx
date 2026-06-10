@@ -47,7 +47,7 @@ export default function Dashboard({ deviceStates, wsMessages, clawEnabled }) {
   ]
 
   return (
-    <div style={{
+    <div className="dashboard-grid-container" style={{
       display: 'grid',
       gridTemplateColumns: '1fr 340px',
       gap: 24,
@@ -58,7 +58,7 @@ export default function Dashboard({ deviceStates, wsMessages, clawEnabled }) {
 
         {/* Stats strip */}
         {devices.length > 0 && (
-          <div style={{
+          <div className="dashboard-stats-strip" style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(6, 1fr)',
             marginBottom: 28,

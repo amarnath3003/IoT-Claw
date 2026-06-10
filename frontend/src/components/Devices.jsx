@@ -324,7 +324,7 @@ export default function Devices({ deviceStates, wsMessages }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 28, alignItems: 'start' }}>
+      <div className="devices-grid-container" style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: 28, alignItems: 'start' }}>
 
         {/* ══ LEFT: Add Device Form ══ */}
         <div style={{
@@ -547,7 +547,7 @@ export default function Devices({ deviceStates, wsMessages }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Header row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div className="devices-header-row" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: 1 }}>
               <h2 style={{
                 margin: 0, fontFamily: C.sans, fontSize: '1rem', fontWeight: 700,
