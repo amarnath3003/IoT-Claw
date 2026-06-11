@@ -54,11 +54,12 @@ export default function App() {
   
   const [setupRequired, setSetupRequired] = useState(false)
   const [setupChecking, setSetupChecking] = useState(true)
+  const [backendError, setBackendError] = useState(false)
 
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = import.meta.env.DEV 
+  const wsUrl = import.meta.env.VITE_WS_URL || (import.meta.env.DEV 
     ? `${wsProtocol}//${window.location.hostname}:8000/ws`
-    : `${wsProtocol}//${window.location.host}/ws`
+    : `${wsProtocol}//${window.location.host}/ws`)
   const { deviceStates, isConnected, brokerConnected, lastMessage, zigbeePairing } =
     useWebSocket(wsUrl)
   const deviceCount = Object.keys(deviceStates).length
@@ -70,7 +71,10 @@ export default function App() {
         setSetupRequired(res.data.setup_required)
         setSetupChecking(false)
       })
-      .catch(() => setSetupChecking(false))
+      .catch((err) => {
+        setBackendError(true)
+        setSetupChecking(false)
+      })
   }, [])
 
   // Fetch initial Claw Mode state from backend
@@ -83,6 +87,19 @@ export default function App() {
 
   if (setupChecking) {
     return <div style={{ height: '100vh', background: '#09090f', display: 'flex', alignItems: 'center', justifyContent: 'center' }} />
+  }
+
+  if (backendError) {
+    return (
+      <div style={{ height: '100vh', background: '#09090f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: S.sans }}>
+        <div style={{ color: '#ef4444', marginBottom: 16 }}>
+          <WifiOff size={48} />
+        </div>
+        <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: '0 0 8px 0' }}>Backend Unreachable</h2>
+        <p style={{ color: S.text2, margin: 0 }}>Could not connect to the IoT-Claw API.</p>
+        <p style={{ color: S.text3, margin: '8px 0 0 0', fontSize: '0.85rem' }}>Make sure your backend server is running on port 8000.</p>
+      </div>
+    )
   }
 
   if (setupRequired) {
