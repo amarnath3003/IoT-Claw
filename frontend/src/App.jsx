@@ -97,7 +97,15 @@ export default function App() {
         </div>
         <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: '0 0 8px 0' }}>Backend Unreachable</h2>
         <p style={{ color: S.text2, margin: 0 }}>Could not connect to the IoT-Claw API.</p>
-        <p style={{ color: S.text3, margin: '8px 0 0 0', fontSize: '0.85rem' }}>Make sure your backend server is running on port 8000.</p>
+        <p style={{ color: S.text3, margin: '8px 0 24px 0', fontSize: '0.85rem' }}>Make sure your backend server is running on port 8000.</p>
+        <button 
+          onClick={() => setBackendError(false)}
+          style={{
+            padding: '8px 24px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: `1px solid ${S.border}`, borderRadius: 8, cursor: 'pointer', fontFamily: S.sans, fontSize: '0.9rem'
+          }}
+        >
+          Continue Offline (UI Testing)
+        </button>
       </div>
     )
   }
