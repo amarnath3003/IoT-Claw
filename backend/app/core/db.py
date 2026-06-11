@@ -158,6 +158,15 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_device_groups_group ON device_groups(group_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_device_groups_device ON device_groups(device_name)')
 
+    # Create system_settings table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at DATETIME
+        )
+    ''')
+
     conn.commit()
     conn.close()
 

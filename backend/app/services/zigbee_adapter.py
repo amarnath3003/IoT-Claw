@@ -25,7 +25,7 @@ from datetime import datetime
 
 from app.integrations.base import BaseIntegration
 
-Z2M_BASE = os.getenv("ZIGBEE2MQTT_BASE_TOPIC", "zigbee2mqtt")
+
 
 
 # ── Helper functions ──────────────────────────────────────────────────────────
@@ -122,6 +122,7 @@ class ZigbeeAdapter(BaseIntegration):
         super().__init__(storage, ws_broadcast)
         self.mqtt = mqtt_client
         self._known_names: set[str] = set()
+        self._base_topic = storage.get_system_setting("zigbee2mqtt_base_topic") or os.getenv("ZIGBEE2MQTT_BASE_TOPIC", "zigbee2mqtt")
 
         try:
             self._loop = asyncio.get_running_loop()
@@ -132,7 +133,7 @@ class ZigbeeAdapter(BaseIntegration):
 
     async def start(self) -> None:
         """Subscribe to all Zigbee2MQTT topics via the shared MQTT transport."""
-        base = Z2M_BASE
+        base = self._base_topic
         self.mqtt.subscribe(f"{base}/bridge/devices")
         self.mqtt.subscribe(f"{base}/bridge/event")
         self.mqtt.subscribe(f"{base}/bridge/response/permit_join")
@@ -141,7 +142,7 @@ class ZigbeeAdapter(BaseIntegration):
 
     async def stop(self) -> None:
         """Best-effort unsubscribe from Zigbee2MQTT topics."""
-        base = Z2M_BASE
+        base = self._base_topic
         try:
             self.mqtt.client.unsubscribe(f"{base}/#")
         except Exception:
@@ -183,7 +184,7 @@ class ZigbeeAdapter(BaseIntegration):
 
     def handle_message(self, topic: str, payload: str):
         """Dispatches incoming Zigbee2MQTT messages."""
-        base = Z2M_BASE
+        base = self._base_topic
         try:
             data = json.loads(payload)
         except Exception:
@@ -227,7 +228,7 @@ class ZigbeeAdapter(BaseIntegration):
             self.storage.add_log("success", "zigbee", f"Zigbee device joined: {name}", data)
             print(f"[Zigbee] New device joined: {name}")
             # Re-request full device list to obtain the definition
-            self.mqtt.publish(f"{Z2M_BASE}/bridge/request/devices", "")
+            self.mqtt.publish(f"{self._base_topic}/bridge/request/devices", "")
         elif etype == "device_leave":
             self.storage.add_log("warning", "zigbee", f"Zigbee device left: {name}", data)
             print(f"[Zigbee] Device left network: {name}")
@@ -266,12 +267,12 @@ class ZigbeeAdapter(BaseIntegration):
 
     def publish_command(self, friendly_name: str, payload: dict) -> bool:
         """Publish a SET payload directly (low-level, used by send_command and REST)."""
-        topic = f"{Z2M_BASE}/{friendly_name}/set"
+        topic = f"{self._base_topic}/{friendly_name}/set"
         return self.mqtt.publish(topic, json.dumps(payload))
 
     def permit_join(self, enable: bool, duration_seconds: int = 254) -> dict:
         """Open or close the Zigbee network for new device pairing."""
-        topic   = f"{Z2M_BASE}/bridge/request/permit_join"
+        topic   = f"{self._base_topic}/bridge/request/permit_join"
         payload = {"value": enable}
         if enable:
             payload["time"] = duration_seconds
@@ -295,7 +296,7 @@ class ZigbeeAdapter(BaseIntegration):
 
     def remove_device(self, friendly_name: str, force: bool = False) -> dict:
         """Unpair and remove a Zigbee device from the network."""
-        topic   = f"{Z2M_BASE}/bridge/request/device/remove"
+        topic   = f"{self._base_topic}/bridge/request/device/remove"
         payload = {"id": friendly_name, "force": force}
         ok = self.mqtt.publish(topic, json.dumps(payload))
         if ok:
@@ -309,12 +310,12 @@ class ZigbeeAdapter(BaseIntegration):
 
     def rename_device(self, old_name: str, new_name: str) -> dict:
         """Rename a Zigbee device (updates friendly_name in Zigbee2MQTT)."""
-        topic   = f"{Z2M_BASE}/bridge/request/device/rename"
+        topic   = f"{self._base_topic}/bridge/request/device/rename"
         payload = {"from": old_name, "to": new_name}
         ok = self.mqtt.publish(topic, json.dumps(payload))
         return {"renamed": True, "from": old_name, "to": new_name, "ok": ok}
 
     def set_group(self, group_id: int, payload: dict) -> bool:
         """Send a command to a Zigbee group (all bulbs in a room at once)."""
-        topic = f"{Z2M_BASE}/group_{group_id}/set"
+        topic = f"{self._base_topic}/group_{group_id}/set"
         return self.mqtt.publish(topic, json.dumps(payload))

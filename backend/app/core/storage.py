@@ -526,3 +526,20 @@ class Storage:
         """Return list of group IDs a device belongs to."""
         rows = self._execute('SELECT group_id FROM device_groups WHERE device_name = ?', (device_name,))
         return [r['group_id'] for r in rows]
+
+    # ── System Settings ──
+
+    def get_system_setting(self, key: str, default=None):
+        rows = self._execute('SELECT value FROM system_settings WHERE key = ?', (key,))
+        return rows[0]['value'] if rows else default
+
+    def set_system_setting(self, key: str, value: str):
+        self._execute('''
+            INSERT OR REPLACE INTO system_settings (key, value, updated_at)
+            VALUES (?, ?, ?)
+        ''', (key, str(value), datetime.now().isoformat()), commit=True)
+
+    def get_all_system_settings(self) -> dict:
+        rows = self._execute('SELECT key, value FROM system_settings')
+        return {r['key']: r['value'] for r in rows}
+

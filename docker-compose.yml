@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  iot-claw:
+    build: .
+    container_name: iot-claw
+    ports:
+      - "8000:8000"
+    volumes:
+      - iot-claw-data:/app/backend/data
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto-config:/mosquitto/config
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+    # Add a basic config file to allow anonymous connections (for local use)
+    command: sh -c "echo 'allow_anonymous true' > /mosquitto/config/mosquitto.conf && echo 'listener 1883 0.0.0.0' >> /mosquitto/config/mosquitto.conf && /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf"
+
+volumes:
+  iot-claw-data:
+  mosquitto-config:
+  mosquitto-data:
+  mosquitto-log:

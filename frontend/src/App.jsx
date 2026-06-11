@@ -15,7 +15,8 @@ import FlashDevice from './components/FlashDevice'
 import ClawModeToggle from './components/ClawModeToggle'
 import NotificationBell from './components/NotificationBell'
 import useWebSocket from './hooks/useWebSocket'
-import { API_BASE } from './api'
+import SetupWizard from './components/SetupWizard'
+import { API_BASE, getSetupStatus } from './api'
 import { zigbeePermitJoin } from './api'
 import './index.css'
 
@@ -50,11 +51,27 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([INITIAL_MESSAGE])
   const [clawEnabled, setClawEnabled] = useState(false)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  
+  const [setupRequired, setSetupRequired] = useState(false)
+  const [setupChecking, setSetupChecking] = useState(true)
 
-  const wsUrl = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8000/ws`
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsUrl = import.meta.env.DEV 
+    ? `${wsProtocol}//${window.location.hostname}:8000/ws`
+    : `${wsProtocol}//${window.location.host}/ws`
   const { deviceStates, isConnected, brokerConnected, lastMessage, zigbeePairing } =
     useWebSocket(wsUrl)
   const deviceCount = Object.keys(deviceStates).length
+
+  // Check setup status
+  useEffect(() => {
+    getSetupStatus()
+      .then(res => {
+        setSetupRequired(res.data.setup_required)
+        setSetupChecking(false)
+      })
+      .catch(() => setSetupChecking(false))
+  }, [])
 
   // Fetch initial Claw Mode state from backend
   useEffect(() => {
@@ -63,6 +80,14 @@ export default function App() {
       .then(d => setClawEnabled(d.enabled ?? false))
       .catch(() => {})
   }, [])
+
+  if (setupChecking) {
+    return <div style={{ height: '100vh', background: '#09090f', display: 'flex', alignItems: 'center', justifyContent: 'center' }} />
+  }
+
+  if (setupRequired) {
+    return <SetupWizard onComplete={() => setSetupRequired(false)} />
+  }
 
   return (
     <div style={{

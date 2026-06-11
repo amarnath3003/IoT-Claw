@@ -155,9 +155,9 @@ class HomeAssistantAdapter(BaseIntegration):
     def __init__(self, storage, ws_broadcast):
         super().__init__(storage, ws_broadcast)
 
-        self._host: str = os.getenv("HA_HOST", "localhost")
-        self._port: int = int(os.getenv("HA_PORT", "8123"))
-        self._token: str = os.getenv("HA_TOKEN", "")
+        self._host: str = storage.get_system_setting("ha_host") or os.getenv("HA_HOST", "localhost")
+        self._port: int = int(storage.get_system_setting("ha_port") or os.getenv("HA_PORT", "8123"))
+        self._token: str = storage.get_system_setting("ha_token") or os.getenv("HA_TOKEN", "")
         self._domain_filter: set[str] = self._parse_domain_filter()
 
         self._ws = None

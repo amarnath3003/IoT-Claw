@@ -114,19 +114,22 @@ async def lifespan(app: FastAPI):
     engine.bind_loop(asyncio.get_running_loop())
 
     # Start MQTT transport (legacy synchronous connect path)
-    mqtt_host = os.getenv("MQTT_BROKER_HOST", "localhost")
-    mqtt_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
+    mqtt_host = storage.get_system_setting("mqtt_broker_host") or os.getenv("MQTT_BROKER_HOST", "localhost")
+    mqtt_port = int(storage.get_system_setting("mqtt_broker_port") or os.getenv("MQTT_BROKER_PORT", "1883"))
     mqtt.connect(host=mqtt_host, port=mqtt_port)
 
     global zigbee_adapter, ha_adapter
 
-    if os.getenv("ZIGBEE2MQTT_ENABLED", "false").lower() == "true":
+    # Check settings, fallback to env
+    z2m_enabled = storage.get_system_setting("zigbee2mqtt_enabled") or os.getenv("ZIGBEE2MQTT_ENABLED", "false")
+    if str(z2m_enabled).lower() == "true":
         zigbee_adapter = ZigbeeAdapter(storage, manager.broadcast, mqtt_client=mqtt)
         mqtt.set_zigbee_adapter(zigbee_adapter)
         registry.register(zigbee_adapter)
         print("[Zigbee] ZigbeeAdapter registered")
 
-    if os.getenv("HA_ENABLED", "false").lower() == "true":
+    ha_enabled = storage.get_system_setting("ha_enabled") or os.getenv("HA_ENABLED", "false")
+    if str(ha_enabled).lower() == "true":
         ha_adapter = HomeAssistantAdapter(storage, manager.broadcast)
         registry.register(ha_adapter)
         print("[HA] HomeAssistantAdapter registered")
@@ -177,6 +180,43 @@ import pathlib as _pathlib
 _hls_dir = _pathlib.Path("hls")
 _hls_dir.mkdir(exist_ok=True)
 app.mount("/hls", StaticFiles(directory=str(_hls_dir)), name="hls")
+
+
+# ── Setup Wizard Endpoints ────────────────────────────────────────────────────
+
+@app.get("/setup/status")
+async def setup_status():
+    """Check if the system requires first-boot configuration."""
+    provider = storage.get_system_setting("llm_provider")
+    return {"setup_required": not bool(provider)}
+
+
+@app.post("/setup/complete")
+async def setup_complete(body: dict):
+    """Save configuration from setup wizard and dynamically reload services."""
+    for key, value in body.items():
+        storage.set_system_setting(key, str(value))
+    
+    global ha_adapter, zigbee_adapter
+    
+    # Reload HA
+    if str(body.get("ha_enabled", "false")).lower() == "true":
+        if not ha_adapter:
+            ha_adapter = HomeAssistantAdapter(storage, manager.broadcast)
+            registry.register(ha_adapter)
+            asyncio.create_task(ha_adapter.start())
+            print("[HA] HomeAssistantAdapter started via Setup")
+    
+    # Reload Zigbee
+    if str(body.get("zigbee_enabled", "false")).lower() == "true":
+        if not zigbee_adapter:
+            zigbee_adapter = ZigbeeAdapter(storage, manager.broadcast, mqtt_client=mqtt)
+            mqtt.set_zigbee_adapter(zigbee_adapter)
+            registry.register(zigbee_adapter)
+            asyncio.create_task(zigbee_adapter.start())
+            print("[Zigbee] ZigbeeAdapter started via Setup")
+
+    return {"status": "success", "message": "Setup complete."}
 
 
 @app.post("/chat")
@@ -346,14 +386,15 @@ async def zigbee_rename(name: str, body: dict):
 @app.get("/zigbee/status")
 async def zigbee_status():
     """Return Zigbee2MQTT connection status."""
-    enabled = os.getenv("ZIGBEE2MQTT_ENABLED", "false").lower() == "true"
+    z2m_enabled = storage.get_system_setting("zigbee2mqtt_enabled") or os.getenv("ZIGBEE2MQTT_ENABLED", "false")
+    enabled = str(z2m_enabled).lower() == "true"
     devices = storage.get_all_devices()
     zigbee_count = sum(1 for d in devices.values() if d.get("zigbee"))
     return {
         "enabled": enabled,
         "adapter_running": zigbee_adapter is not None,
         "zigbee_device_count": zigbee_count,
-        "base_topic": os.getenv("ZIGBEE2MQTT_BASE_TOPIC", "zigbee2mqtt"),
+        "base_topic": storage.get_system_setting("zigbee2mqtt_base_topic") or os.getenv("ZIGBEE2MQTT_BASE_TOPIC", "zigbee2mqtt"),
     }
 
 
@@ -362,7 +403,8 @@ async def zigbee_status():
 @app.get("/ha/status")
 async def ha_status():
     """Return Home Assistant adapter status and entity count."""
-    enabled = os.getenv("HA_ENABLED", "false").lower() == "true"
+    ha_enabled = storage.get_system_setting("ha_enabled") or os.getenv("HA_ENABLED", "false")
+    enabled = str(ha_enabled).lower() == "true"
     if not enabled:
         return {"enabled": False, "connected": False, "entity_count": 0}
     if not ha_adapter:
@@ -376,10 +418,11 @@ async def ha_diagnose():
     import socket
     import aiohttp
 
-    enabled = os.getenv("HA_ENABLED", "false").lower() == "true"
-    ha_host = os.getenv("HA_HOST", "localhost")
-    ha_port = int(os.getenv("HA_PORT", "8123"))
-    ha_token = os.getenv("HA_TOKEN", "")
+    ha_enabled = storage.get_system_setting("ha_enabled") or os.getenv("HA_ENABLED", "false")
+    enabled = str(ha_enabled).lower() == "true"
+    ha_host = storage.get_system_setting("ha_host") or os.getenv("HA_HOST", "localhost")
+    ha_port = int(storage.get_system_setting("ha_port") or os.getenv("HA_PORT", "8123"))
+    ha_token = storage.get_system_setting("ha_token") or os.getenv("HA_TOKEN", "")
 
     diagnostics = {
         "enabled": enabled,
@@ -798,6 +841,7 @@ async def stop_camera(name: str):
     return result
 
 
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -930,3 +974,8 @@ async def command_group(group_id: str, body: dict):
     )
     await manager.broadcast({"type": "state", "data": storage.get_all_devices()})
     return {"status": "sent", "group_id": group_id, "command": command, "results": results}
+
+# Serve frontend static build (for unified Docker bundle)
+frontend_build_dir = _pathlib.Path("../frontend/dist")
+if frontend_build_dir.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_build_dir), html=True), name="frontend")

@@ -1,11 +1,19 @@
 import axios from 'axios'
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:8000`
+export const API_BASE = import.meta.env.DEV 
+  ? `${window.location.protocol}//${window.location.hostname}:8000`
+  : ''
 
 const api = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
 })
+
+export const getSetupStatus = () =>
+  api.get('/setup/status')
+
+export const completeSetup = (config) =>
+  api.post('/setup/complete', config)
 
 export const sendChat = (message, history) =>
   api.post('/chat', { message, history })
