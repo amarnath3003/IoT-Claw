@@ -1,10 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import IoTClawShowcase from './showcase/IoTClawShowcase'
 import './index.css'
 
+const isShowcase = new URLSearchParams(window.location.search).has('showcase')
+
 // Register Service Worker for PWA + Push Notifications
-if ('serviceWorker' in navigator) {
+if (!isShowcase && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')
@@ -15,6 +18,6 @@ if ('serviceWorker' in navigator) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    {isShowcase ? <IoTClawShowcase /> : <App />}
   </React.StrictMode>
 )

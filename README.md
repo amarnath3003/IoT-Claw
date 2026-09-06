@@ -14,6 +14,10 @@
 
 </div>
 
+<div align="center">
+  <img src="./assets/iot-claw-showcase.gif" alt="IoT-Claw animated project showcase: conversational device control, visual workflows, ESP32 edge deployment, and autonomous operation" width="960" />
+</div>
+
 ---
 
 **IoT-Claw** is a next-generation smart home platform that turns your living space into an intelligent, conversational ecosystem. By combining advanced AI reasoning with standard smart home protocols (MQTT, Zigbee, Home Assistant), IoT-Claw enables you to program, monitor, and command physical hardware using simple, natural language.
